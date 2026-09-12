@@ -12,7 +12,7 @@
  */
 import { Color, Piece, PieceType, type Move } from './types.js';
 import {
-  BOARD_COLS, ELEPHANT_MOVES, HORSE_MOVES, colorOf, colOf, elephantZone,
+  BOARD_COLS, colorOf, colOf, elephantZone,
   inPalace, onBoard, pawnCrossed, rowOf, sq, typeOf,
 } from './constants.js';
 import type { Board } from './board.js';
@@ -52,7 +52,7 @@ function pushMove(board: Board, from: number, to: number, opp: Color, moves: Mov
 // --- 帅/将 ---
 function genKing(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
-  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const deltas: ReadonlyArray<readonly [number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!inPalace(nr, nc, side)) continue;
@@ -63,7 +63,7 @@ function genKing(board: Board, from: number, side: Color, opp: Color, moves: Mov
 // --- 仕/士 ---
 function genAdvisor(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
-  const deltas = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+  const deltas: ReadonlyArray<readonly [number, number]> = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!inPalace(nr, nc, side)) continue;
@@ -74,7 +74,7 @@ function genAdvisor(board: Board, from: number, side: Color, opp: Color, moves: 
 // --- 相/象 ---
 function genElephant(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
-  const deltas = [[-2, -2], [-2, 2], [2, -2], [2, 2]];
+  const deltas: ReadonlyArray<readonly [number, number]> = [[-2, -2], [-2, 2], [2, -2], [2, 2]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!onBoard(nr, nc)) continue;
@@ -85,7 +85,7 @@ function genElephant(board: Board, from: number, side: Color, opp: Color, moves:
 }
 
 // --- 马 ---
-function genHorse(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
+function genHorse(board: Board, from: number, _side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
   // [dr, dc, legDr, legDc]：落点与对应蹩腿位
   const table: ReadonlyArray<readonly [number, number, number, number]> = [
@@ -103,7 +103,7 @@ function genHorse(board: Board, from: number, side: Color, opp: Color, moves: Mo
 }
 
 // --- 车（直线滑行）---
-function genRook(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
+function genRook(board: Board, from: number, _side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
     let nr = r + dr, nc = c + dc;
@@ -121,7 +121,7 @@ function genRook(board: Board, from: number, side: Color, opp: Color, moves: Mov
 }
 
 // --- 炮（平移同车，吃子隔一子）---
-function genCannon(board: Board, from: number, side: Color, opp: Color, moves: Move[]): void {
+function genCannon(board: Board, from: number, _side: Color, opp: Color, moves: Move[]): void {
   const r = rowOf(from), c = colOf(from);
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
     let nr = r + dr, nc = c + dc;

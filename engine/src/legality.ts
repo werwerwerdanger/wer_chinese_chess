@@ -24,7 +24,6 @@ export function inCheck(board: Board, side: Color): boolean {
   // --- 1. 直线：车 / 炮 / 将帅照面（横竖四个方向）---
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
     let r = kr + dr, c = kc + dc;
-    let blockers = 0;
     let firstPiece: Piece = Piece.None;
     let firstR = -1, firstC = -1;
     // 找第一个子

@@ -9,7 +9,7 @@
 import { Color, Piece, type Move, type UndoInfo, type HashKey } from './types.js';
 import {
   BOARD_COLS, BOARD_ROWS, BOARD_SIZE, INITIAL_FEN, PIECE_TO_FEN_CHAR,
-  ZOBRIST_PIECE, ZOBRIST_TURN, colorOf, colOf, inPalace, pieceFromFenChar,
+  ZOBRIST_PIECE, ZOBRIST_TURN, colOf, inPalace, pieceFromFenChar,
   rowOf, sq, KING_OF,
 } from './constants.js';
 
@@ -61,7 +61,7 @@ export class Board {
     this.turn = side === 'b' ? Color.Black : Color.Red;
     this.hashKey ^= ZOBRIST_TURN[this.turn]!;
 
-    if (this.kingSquare[Color.Red] < 0 || this.kingSquare[Color.Black] < 0) {
+    if (this.kingSquare[0]! < 0 || this.kingSquare[1]! < 0) {
       throw new Error('FEN 缺少将/帅');
     }
   }
