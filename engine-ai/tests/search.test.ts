@@ -2,11 +2,11 @@
  * 搜索引擎测试 — 正确性 + 性能基线
  */
 import { describe, it, expect } from 'vitest';
-import { Board } from '../src/board.js';
+import { Board } from '@wer-chess/engine';
 import { findBestMove, Searcher } from '../src/search.js';
-import { generateLegalMoves } from '../src/legality.js';
-import { Color } from '../src/types.js';
-import { sq } from '../src/constants.js';
+import { generateLegalMoves } from '@wer-chess/engine';
+import { Color } from '@wer-chess/engine';
+import { sq } from '@wer-chess/engine';
 
 describe('search 正确性', () => {
   it('一步杀：红车直接将死', () => {

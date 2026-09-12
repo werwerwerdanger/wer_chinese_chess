@@ -11,10 +11,10 @@
  *
  * 性能目标：初始局面 depth 4 < 1s（TS 单线程）
  */
-import type { Board } from './board.js';
-import type { Move, SearchResult } from './types.js';
-import { generatePseudoLegalMoves } from './movegen.js';
-import { inCheck } from './legality.js';
+import type { Board } from '@wer-chess/engine';
+import type { Move, SearchResult } from '@wer-chess/engine';
+import { generatePseudoLegalMoves } from '@wer-chess/engine';
+import { inCheck } from '@wer-chess/engine';
 import { evaluate, mvvlva, MATE_SCORE } from './eval.js';
 
 /** 无走子哨兵 */

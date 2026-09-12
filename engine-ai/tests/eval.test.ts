@@ -2,10 +2,10 @@
  * 评估函数测试
  */
 import { describe, it, expect } from 'vitest';
-import { Board } from '../src/board.js';
+import { Board } from '@wer-chess/engine';
 import { evaluate, mvvlva } from '../src/eval.js';
-import { INITIAL_FEN } from '../src/constants.js';
-import { Piece } from '../src/types.js';
+import { INITIAL_FEN } from '@wer-chess/engine';
+import { Piece } from '@wer-chess/engine';
 
 describe('evaluate', () => {
   it('初始局面和棋为零（双方对称）', () => {

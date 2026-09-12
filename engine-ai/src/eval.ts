@@ -8,8 +8,8 @@
  * - 黑方取值时行镜像（row → 9-row），列不镜像（表本身左右对称）
  * - 数值为启发式参数，来源为公开的经典设计（XQWLight 风格），可调
  */
-import { Piece } from './types.js';
-import type { Board } from './board.js';
+import { Piece } from '@wer-chess/engine';
+import type { Board } from '@wer-chess/engine';
 
 /** 将杀分（与子力和同量纲，帅 = 10000） */
 export const MATE_SCORE = 10000;

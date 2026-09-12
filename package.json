@@ -5,12 +5,14 @@
   "type": "module",
   "workspaces": [
     "engine",
+    "engine-ai",
     "web"
   ],
   "scripts": {
     "dev": "npm run dev -w web",
-    "build": "npm run build -w engine && npm run build -w web",
-    "test": "npm run test -w engine",
-    "test:engine": "npm run test -w engine"
+    "build": "npm run build -w web",
+    "test": "npm run test -w engine && npm run test -w engine-ai",
+    "test:engine": "npm run test -w engine",
+    "test:ai": "npm run test -w engine-ai"
   }
 }

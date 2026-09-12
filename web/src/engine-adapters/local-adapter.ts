@@ -2,8 +2,9 @@
  * 本组自有引擎的适配器 — 包装 @wer-chess/engine 的 Board
  */
 import {
-  Board, Color, Piece, generateLegalMoves, inCheck, moveToChinese, Searcher,
+  Board, Color, Piece, generateLegalMoves, inCheck, moveToChinese,
 } from '@wer-chess/engine';
+import { Searcher } from '@wer-chess/engine-ai';
 import type { Move } from '@wer-chess/engine';
 import type { EngineAdapter, PositionView } from './types.js';
 import { EngineError } from './types.js';
