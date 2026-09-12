@@ -126,10 +126,10 @@ export const ZOBRIST_PIECE: ReadonlyArray<ReadonlyArray<bigint>> = Array.from(
   () => Array.from({ length: BOARD_SIZE }, () => rng()),
 );
 
-/** 棋子名称（中文，用于 UI 与日志） */
+/** 棋子名称（中文，用于记谱与 UI；标准记谱用简体） */
 export const PIECE_NAMES: Record<number, string> = {
   [Piece.RedKing]: '帅', [Piece.RedAdvisor]: '仕', [Piece.RedElephant]: '相',
-  [Piece.RedHorse]: '傌', [Piece.RedRook]: '俥', [Piece.RedCannon]: '炮', [Piece.RedPawn]: '兵',
+  [Piece.RedHorse]: '马', [Piece.RedRook]: '车', [Piece.RedCannon]: '炮', [Piece.RedPawn]: '兵',
   [Piece.BlackKing]: '将', [Piece.BlackAdvisor]: '士', [Piece.BlackElephant]: '象',
   [Piece.BlackHorse]: '马', [Piece.BlackRook]: '车', [Piece.BlackCannon]: '炮', [Piece.BlackPawn]: '卒',
 };

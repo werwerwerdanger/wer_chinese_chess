@@ -10,3 +10,4 @@ export {
 } from './constants.js';
 export { Color, Piece, PieceType } from './types.js';
 export type { Move, UndoInfo, HashKey, SearchResult } from './types.js';
+export { moveToChinese } from './notation.js';

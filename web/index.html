@@ -61,10 +61,13 @@
       padding: 12px;
       font-size: 13px;
       font-family: Consolas, monospace;
-      height: 320px;
+      height: 280px;
       overflow-y: auto;
       line-height: 1.7;
     }
+    .moves div { cursor: pointer; padding: 0 4px; border-radius: 3px; }
+    .moves div:hover { background: #4a4a4a; }
+    .moves div.current { background: #5b3a1e; color: #f0d9b5; }
     .moves::-webkit-scrollbar { width: 6px; }
     .moves::-webkit-scrollbar-thumb { background: #5b3a1e; border-radius: 3px; }
     .hint { font-size: 12px; color: #999; }
@@ -82,8 +85,20 @@
         <button id="btn-undo">悔棋</button>
         <button id="btn-reset">重开</button>
       </div>
+      <div class="buttons">
+        <button id="btn-first">⏮</button>
+        <button id="btn-prev">◀</button>
+        <button id="btn-next">▶</button>
+        <button id="btn-last">⏭</button>
+      </div>
       <div class="moves" id="moves"></div>
-      <div class="hint">点击己方棋子选中，再点击绿点落子</div>
+      <div class="buttons">
+        <button id="btn-copy-fen">复制FEN</button>
+        <button id="btn-load-fen">载入FEN</button>
+        <button id="btn-export">导出棋谱</button>
+      </div>
+      <input id="fen-input" placeholder="粘贴 FEN 后点载入" style="padding:8px;border-radius:6px;border:none;font-size:12px;" />
+      <div class="hint">点击棋子走棋；点着法列表回放；⏮◀▶⏭ 导航</div>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

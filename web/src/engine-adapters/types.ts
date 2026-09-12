@@ -48,6 +48,20 @@ export interface EngineAdapter {
 
   /** 中文纵线格式走子描述（如 "炮二平五"），引擎不支持时返回 null */
   describeMove(move: Move): string | null;
+
+  // ---- 打谱功能 ----
+
+  /** 当前局面 FEN */
+  getFen(): string;
+
+  /** 从 FEN 载入局面（打谱/残局分析用），非法 FEN 抛 EngineError */
+  loadFen(fen: string): void;
+
+  /** 走法总数（打谱回放的步数上限） */
+  moveNumber(): number;
+
+  /** 跳到第 n 步之后的局面（0=初始；n∈[0, moveNumber]），返回实际跳到的步数 */
+  seekTo(n: number): number;
 }
 
 /** 引擎异常 */

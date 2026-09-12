@@ -2,8 +2,7 @@
  * 本组自有引擎的适配器 — 包装 @wer-chess/engine 的 Board
  */
 import {
-  Board, Color, Piece, generateLegalMoves, inCheck,
-  PIECE_NAMES, colOf, rowOf,
+  Board, Color, Piece, generateLegalMoves, inCheck, moveToChinese,
 } from '@wer-chess/engine';
 import type { Move } from '@wer-chess/engine';
 import type { EngineAdapter, PositionView } from './types.js';
@@ -19,9 +18,14 @@ export class LocalEngineAdapter implements EngineAdapter {
 
   private board = new Board();
   private history: HistoryEntry[] = [];
+  private startFen: string;
+
+  constructor(fen?: string) {
+    this.startFen = fen ?? new Board().toFen();
+    this.board = new Board(this.startFen);
+  }
 
   getPosition(): PositionView {
-    // squares 拷贝避免 UI 直接改内部状态
     return {
       squares: Array.from(this.board.squares),
       turn: this.board.turn as 0 | 1,
@@ -48,7 +52,7 @@ export class LocalEngineAdapter implements EngineAdapter {
   }
 
   reset(): void {
-    this.board = new Board();
+    this.board = new Board(this.startFen);
     this.history = [];
   }
 
@@ -58,21 +62,41 @@ export class LocalEngineAdapter implements EngineAdapter {
 
   /**
    * 中国象棋终局：将死或困毙都是输（困毙方负）。
-   * 红方无合法走子 → 黑胜；黑方无合法走子 → 红胜。
    */
   gameOver(): 'red-win' | 'black-win' | null {
     const side = this.board.turn;
     if (generateLegalMoves(this.board, side).length > 0) return null;
-    // 当前行棋方无棋可走：将死或困毙都判负
     return side === Color.Red ? 'black-win' : 'red-win';
   }
 
+  // ---- 打谱 ----
+
+  /** 中文纵线记谱（"炮二平五"式）。须在走子前调用。 */
   describeMove(move: Move): string | null {
-    const piece = this.board.at(move.from);
-    if (piece === Piece.None) return null;
-    const name = PIECE_NAMES[piece] ?? '?';
-    const from = `${rowOf(move.from)}行${colOf(move.from)}列`;
-    const to = `${rowOf(move.to)}行${colOf(move.to)}列`;
-    return `${name} ${from} → ${to}`;
+    return moveToChinese(this.board, move);
+  }
+
+  getFen(): string {
+    return this.board.toFen();
+  }
+
+  loadFen(fen: string): void {
+    try {
+      this.board = new Board(fen);
+      this.startFen = fen;
+      this.history = [];
+    } catch (err) {
+      throw new EngineError(`FEN 无效： ${(err as Error).message}`);
+    }
+  }
+
+  moveNumber(): number {
+    return this.history.length;
+  }
+
+  seekTo(n: number): number {
+    const target = Math.max(0, Math.min(n, this.history.length));
+    while (this.history.length > target) this.undo();
+    return this.history.length;
   }
 }
