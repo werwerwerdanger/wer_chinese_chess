@@ -156,7 +156,7 @@ export class GameController {
       return;
     }
 
-    const isOwnPiece = piece !== 255 && ((piece >> 3) & 1) !== pos.turn;
+    const isOwnPiece = piece !== 255 && ((piece >> 3) & 1) === pos.turn;
     if (isOwnPiece) {
       this.selected = sqIdx;
       this.legalFromSelected = new Set(
