@@ -110,3 +110,18 @@
 
 ### 验证
 - build 通过，37/37 测试回归全绿
+
+## 2026-09-12 22:48 M3.5 UI 接 AI（人机对战）
+
+### 实现
+- adapter 接口加 think(depth, timeLimitMs)：Searcher 包装，score 转当前方视角
+- game.ts 人机模式（AI 执黑）：
+  - tryMove 后 maybeAiMove()：setTimeout 50ms 让"思考中"状态先渲染
+  - AI 思考中锁棋盘操作；黑方回合玩家不可动子
+  - 悔棋 = 撤 2 步（AI+玩家各一）
+  - reset/loadFen 后轮黑自动触发 AI
+- UI：模式下拉（双人/人机）+ 难度（2/4/6 层），AI 走子后状态栏显示深度/节点数/耗时/评分
+- 注意：搜索跑在主线程，depth 6 时 UI 会卡 ~3s（时间软限），v2 上 Web Worker
+
+### 验证
+- build 通过，37/37 测试回归全绿
