@@ -280,8 +280,14 @@ export class GameController {
       if (i === this.viewIndex - 1) row.classList.add('current');
       this.moveList.appendChild(row);
     }
+    // 只滚动列表自身（scrollIntoView 会连带滚动页面，导致画面抖动）
     const cur = this.moveList.querySelector('.current');
-    cur?.scrollIntoView({ block: 'nearest' });
+    if (cur) {
+      const listRect = this.moveList.getBoundingClientRect();
+      const rowRect = cur.getBoundingClientRect();
+      this.moveList.scrollTop +=
+        rowRect.top - listRect.top - (listRect.height - rowRect.height) / 2;
+    }
   }
 
   private updateStatus(turn: 0 | 1, viewing: boolean): void {
