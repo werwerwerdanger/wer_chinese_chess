@@ -37,7 +37,9 @@ export function preloadPieceImages(): void {
     const img = new Image();
     img.onload = () => { pieceImages.set(Number(code), img); done(); };
     img.onerror = done; // 单张失败不阻塞，该棋子保持手绘
-    img.src = `/pieces/${file}.png`;
+    // new URL(...) 基于当前模块 URL 解析 → 生成带完整 origin 的绝对地址，
+    // 兼容 dev server / 生产构建 / iframe 内嵌预览（相对路径在代理场景会解析到宿主）
+    img.src = new URL(`../public/pieces/${file}.png`, import.meta.url).href;
   }
 }
 
