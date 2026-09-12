@@ -14,14 +14,14 @@
       background: #2c2c2c;
       color: #eee;
       display: flex;
-      justify-content: center;
-      align-items: center;
       min-height: 100vh;
     }
     .app {
       display: flex;
       gap: 24px;
       padding: 24px;
+      /* margin:auto 实现安全居中：视口不够高时内容可滚动到顶，不会被裁 */
+      margin: auto;
     }
     .board-panel { position: relative; }
     canvas {
