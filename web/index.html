@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 声明页面为纯亮色：防止暗色模式扩展（Dark Reader 等）反色 canvas 棋盘 -->
+  <meta name="color-scheme" content="light" />
   <title>中国象棋 — wer-chess</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root { color-scheme: light only; }
     body {
       font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
       background: #2c2c2c;
