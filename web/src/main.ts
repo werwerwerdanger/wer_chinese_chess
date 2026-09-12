@@ -18,7 +18,10 @@ const controller = new GameController(canvas, new LocalEngineAdapter(), status, 
   copyFen: btn('btn-copy-fen'),
   loadFen: btn('btn-load-fen'),
   exportMoves: btn('btn-export'),
-}, fenInput);
+}, fenInput, {
+  select: document.getElementById('mode-select') as HTMLSelectElement,
+  aiDepth: document.getElementById('ai-depth') as HTMLSelectElement,
+});
 
 // 棋子 PNG 就绪后重绘一帧（此前 Canvas 手绘兜底）
 setOnImagesReady(() => controller.refresh());

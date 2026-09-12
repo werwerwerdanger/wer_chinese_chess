@@ -12,7 +12,7 @@
  * 性能目标：初始局面 depth 4 < 1s（TS 单线程）
  */
 import type { Board } from './board.js';
-import type { Move, SearchResult, UndoInfo } from './types.js';
+import type { Move, SearchResult } from './types.js';
 import { generatePseudoLegalMoves } from './movegen.js';
 import { inCheck } from './legality.js';
 import { evaluate, mvvlva, MATE_SCORE } from './eval.js';

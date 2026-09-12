@@ -8,7 +8,7 @@
  * - 黑方取值时行镜像（row → 9-row），列不镜像（表本身左右对称）
  * - 数值为启发式参数，来源为公开的经典设计（XQWLight 风格），可调
  */
-import { Piece, PieceType } from './types.js';
+import { Piece } from './types.js';
 import type { Board } from './board.js';
 
 /** 将杀分（与子力和同量纲，帅 = 10000） */

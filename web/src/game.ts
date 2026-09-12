@@ -42,9 +42,45 @@ export class GameController {
       copyFen: HTMLButtonElement; loadFen: HTMLButtonElement; exportMoves: HTMLButtonElement;
     },
     private readonly fenInput: HTMLInputElement,
+    private readonly mode: {
+      select: HTMLSelectElement;      // 人机/人人
+      aiDepth: HTMLSelectElement;     // AI 深度
+    },
   ) {
     this.bindEvents();
     this.render();
+    // 人机模式且轮到 AI（执黑）→ 开局即思考
+    this.maybeAiMove();
+  }
+
+  /** 人机模式：AI 执黑 */
+  private aiEnabled(): boolean {
+    return this.mode.select.value === 'pve';
+  }
+
+  private aiThinking = false;
+
+  /** 轮到 AI 且局面未结束 → 异步思考并落子 */
+  private maybeAiMove(): void {
+    if (!this.aiEnabled() || this.aiThinking) return;
+    if (this.engine.gameOver()) return;
+    const pos = this.engine.getPosition();
+    if (pos.turn !== 1) return; // AI 只执黑
+    this.aiThinking = true;
+    this.setStatus('🤔 AI 思考中…');
+    // setTimeout 让状态栏先渲染
+    setTimeout(() => {
+      try {
+        const depth = Number(this.mode.aiDepth.value);
+        const t = this.engine.think(depth, 3000);
+        this.tryMove({ from: t.move.from, to: t.move.to });
+        this.setStatus(`🤖 AI（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}）`);
+      } catch (err) {
+        this.setStatus(`❌ AI 出错：${(err as Error).message}`);
+      } finally {
+        this.aiThinking = false;
+      }
+    }, 50);
   }
 
   private bindEvents(): void {
@@ -97,6 +133,9 @@ export class GameController {
 
   private onClick(e: MouseEvent): void {
     if (this.engine.gameOver()) return;
+    if (this.aiThinking) return; // AI 思考中锁操作
+    // 人机模式：AI 执黑，黑方回合玩家不可操作
+    if (this.aiEnabled() && this.engine.getPosition().turn === 1) return;
     // 处于回放态 → 先跳回最新
     if (this.viewIndex < this.records.length) {
       this.seek(this.records.length);
@@ -146,11 +185,18 @@ export class GameController {
     this.selected = null;
     this.legalFromSelected.clear();
     this.render();
+    // 人机模式：轮到 AI → 思考
+    this.maybeAiMove();
   }
 
   private undo(): void {
-    this.engine.undo();
-    this.records.pop();
+    if (this.aiThinking) return;
+    // 人机模式：撤销 AI 一步 + 玩家一步，回到玩家上次行棋前
+    const steps = this.aiEnabled() && this.records.length >= 2 ? 2 : 1;
+    for (let i = 0; i < steps && this.records.length > 0; i++) {
+      this.engine.undo();
+      this.records.pop();
+    }
     this.viewIndex = this.records.length;
     this.selected = null;
     this.legalFromSelected.clear();
@@ -164,6 +210,7 @@ export class GameController {
     this.selected = null;
     this.legalFromSelected.clear();
     this.render();
+    this.maybeAiMove(); // FEN 载入后可能轮 AI
   }
 
   private copyFen(): void {

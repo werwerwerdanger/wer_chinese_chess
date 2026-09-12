@@ -82,6 +82,17 @@
       <h1>中国象棋</h1>
       <div class="status" id="status">加载中…</div>
       <div class="buttons">
+        <select id="mode-select" title="对局模式" style="flex:1;padding:8px;border:none;border-radius:6px;background:#5b3a1e;color:#f0d9b5;font-size:14px;">
+          <option value="pvp">双人对战</option>
+          <option value="pve" selected>人机（AI执黑）</option>
+        </select>
+        <select id="ai-depth" title="AI难度" style="flex:1;padding:8px;border:none;border-radius:6px;background:#5b3a1e;color:#f0d9b5;font-size:14px;">
+          <option value="2">简单(2层)</option>
+          <option value="4" selected>中等(4层)</option>
+          <option value="6">困难(6层)</option>
+        </select>
+      </div>
+      <div class="buttons">
         <button id="btn-undo">悔棋</button>
         <button id="btn-reset">重开</button>
       </div>

@@ -62,6 +62,15 @@ export interface EngineAdapter {
 
   /** 跳到第 n 步之后的局面（0=初始；n∈[0, moveNumber]），返回实际跳到的步数 */
   seekTo(n: number): number;
+
+  // ---- AI ----
+
+  /**
+   * AI 思考并返回最佳走子（不执行）。
+   * depth = 搜索深度；timeLimitMs = 时间上限。
+   * 引擎不支持搜索时抛 EngineError。
+   */
+  think(depth: number, timeLimitMs?: number): { move: Move; score: number; depth: number; nodes: number; timeMs: number };
 }
 
 /** 引擎异常 */

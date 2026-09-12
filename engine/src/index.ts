@@ -11,3 +11,5 @@ export {
 export { Color, Piece, PieceType } from './types.js';
 export type { Move, UndoInfo, HashKey, SearchResult } from './types.js';
 export { moveToChinese } from './notation.js';
+export { Searcher, findBestMove } from './search.js';
+export { evaluate, mvvlva, PIECE_VALUES, MATE_SCORE } from './eval.js';

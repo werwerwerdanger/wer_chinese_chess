@@ -2,7 +2,7 @@
  * 本组自有引擎的适配器 — 包装 @wer-chess/engine 的 Board
  */
 import {
-  Board, Color, Piece, generateLegalMoves, inCheck, moveToChinese,
+  Board, Color, Piece, generateLegalMoves, inCheck, moveToChinese, Searcher,
 } from '@wer-chess/engine';
 import type { Move } from '@wer-chess/engine';
 import type { EngineAdapter, PositionView } from './types.js';
@@ -98,5 +98,22 @@ export class LocalEngineAdapter implements EngineAdapter {
     const target = Math.max(0, Math.min(n, this.history.length));
     while (this.history.length > target) this.undo();
     return this.history.length;
+  }
+
+  // ---- AI ----
+
+  think(depth: number, timeLimitMs = 3000): { move: Move; score: number; depth: number; nodes: number; timeMs: number } {
+    const searcher = new Searcher(this.board);
+    const r = searcher.search(depth, timeLimitMs);
+    if (!r.bestMove) throw new EngineError('无棋可走');
+    // SearchResult.score 是红方视角，转成"当前思考方"视角供 UI 展示
+    const sign = this.board.turn === 0 ? 1 : -1;
+    return {
+      move: r.bestMove,
+      score: r.score * sign,
+      depth: r.depth,
+      nodes: r.nodes,
+      timeMs: r.timeMs,
+    };
   }
 }
