@@ -7,6 +7,40 @@
  */
 import { PIECE_NAMES, type Piece } from '@wer-chess/engine';
 
+// ---------------------------------------------------------------------------
+// PNG 棋子素材（scripts/gen_pieces.py 生成），按 Piece 编码缓存
+// ---------------------------------------------------------------------------
+const PIECE_IMG_FILES: Record<number, string> = {
+  0: 'red_king', 1: 'red_advisor', 2: 'red_elephant', 3: 'red_horse',
+  4: 'red_rook', 5: 'red_cannon', 6: 'red_pawn',
+  8: 'black_king', 9: 'black_advisor', 10: 'black_elephant', 11: 'black_horse',
+  12: 'black_rook', 13: 'black_cannon', 14: 'black_pawn',
+};
+
+const pieceImages = new Map<number, HTMLImageElement>();
+let imagesReady = false;
+/** 素材全部就绪后调用（GameController 用于触发一次重绘） */
+let onImagesReady: (() => void) | null = null;
+
+export function setOnImagesReady(cb: () => void): void {
+  onImagesReady = cb;
+  if (imagesReady) cb(); // 已就绪则立即触发
+}
+
+/** 预加载全部棋子 PNG；全部就绪前 drawPiece 回退到 Canvas 手绘 */
+export function preloadPieceImages(): void {
+  let pending = Object.keys(PIECE_IMG_FILES).length;
+  const done = () => {
+    if (--pending === 0) { imagesReady = true; onImagesReady?.(); }
+  };
+  for (const [code, file] of Object.entries(PIECE_IMG_FILES)) {
+    const img = new Image();
+    img.onload = () => { pieceImages.set(Number(code), img); done(); };
+    img.onerror = done; // 单张失败不阻塞，该棋子保持手绘
+    img.src = `/pieces/${file}.png`;
+  }
+}
+
 export interface RenderOptions {
   cell: number;       // 格子边长 px
   margin: number;     // 棋盘留白 px
@@ -162,6 +196,14 @@ function drawPieces(ctx: CanvasRenderingContext2D, squares: ReadonlyArray<number
 }
 
 function drawPiece(ctx: CanvasRenderingContext2D, x: number, y: number, piece: Piece, opt: RenderOptions): void {
+  // PNG 素材路径
+  const img = imagesReady ? pieceImages.get(piece) : undefined;
+  if (img) {
+    const size = opt.cell * 0.92;
+    ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+    return;
+  }
+  // 回退：Canvas 手绘（素材未加载/加载失败时）
   const r = opt.cell * 0.42;
   const isRed = ((piece >> 3) & 1) === 0;
 

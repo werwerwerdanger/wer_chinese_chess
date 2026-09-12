@@ -198,6 +198,11 @@ export class GameController {
     );
   }
 
+  /** 供外部事件（如棋子 PNG 素材加载完成）触发的一帧重绘 */
+  refresh(): void {
+    this.render();
+  }
+
   private render(): void {
     const pos = this.engine.getPosition();
     const viewing = this.viewIndex < this.records.length;
