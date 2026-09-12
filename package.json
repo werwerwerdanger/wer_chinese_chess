@@ -1,0 +1,16 @@
+{
+  "name": "wer-chinese-chess",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "engine",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w engine && npm run build -w web",
+    "test": "npm run test -w engine",
+    "test:engine": "npm run test -w engine"
+  }
+}
