@@ -29,6 +29,10 @@
       box-shadow: 0 4px 24px rgba(0,0,0,0.5);
       cursor: pointer;
       display: block;
+      /* 等比缩放到视口内（DevTools/小窗口不用滚动也能看全红方底线）；
+         点击坐标已按 rect.width 换算，缩放不影响交互 */
+      max-width: min(100%, calc(100vh - 72px));
+      height: auto;
     }
     .side-panel {
       display: flex;
@@ -64,7 +68,7 @@
       padding: 12px;
       font-size: 13px;
       font-family: Consolas, monospace;
-      height: 280px;
+      height: min(280px, 32vh);
       overflow-y: auto;
       line-height: 1.7;
     }
@@ -79,7 +83,7 @@
 <body>
   <div class="app">
     <div class="board-panel">
-      <canvas id="board" width="600" height="600"></canvas>
+      <canvas id="board" width="600" height="664"></canvas>
     </div>
     <div class="side-panel">
       <h1>中国象棋</h1>

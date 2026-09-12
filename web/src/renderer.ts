@@ -53,7 +53,9 @@ export interface RenderOptions {
 }
 
 export const BOARD_PIXELS = (opt: RenderOptions) =>
-  opt.margin * 2 + opt.cell * 8; // 棋盘线宽 8 格
+  opt.margin * 2 + opt.cell * 8; // 棋盘宽：9 条竖线 8 格
+export const BOARD_PIXELS_H = (opt: RenderOptions) =>
+  opt.margin * 2 + opt.cell * 9; // 棋盘高：10 条横线 9 格（row9 交点 y = margin + 9*cell）
 
 export function squareToXY(sqIdx: number, opt: RenderOptions): { x: number; y: number } {
   const row = Math.floor(sqIdx / 9);
@@ -79,12 +81,13 @@ export function drawBoard(
   squares: ReadonlyArray<number>,
   opt: RenderOptions,
 ): void {
-  const size = BOARD_PIXELS(opt);
-  ctx.clearRect(0, 0, size, size);
+  const w = BOARD_PIXELS(opt);
+  const h = BOARD_PIXELS_H(opt);
+  ctx.clearRect(0, 0, w, h);
 
   // 背景木纹色
   ctx.fillStyle = '#f0d9b5';
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, w, h);
 
   drawGrid(ctx, opt);
   drawDecorations(ctx, opt);
