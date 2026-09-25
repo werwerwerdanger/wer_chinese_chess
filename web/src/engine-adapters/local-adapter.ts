@@ -103,7 +103,7 @@ export class LocalEngineAdapter implements EngineAdapter {
 
   // ---- AI ----
 
-  think(depth: number, timeLimitMs = 3000): { move: Move; score: number; depth: number; nodes: number; timeMs: number } {
+  async think(depth: number, timeLimitMs = 3000): Promise<{ move: Move; score: number; depth: number; nodes: number; timeMs: number }> {
     const searcher = new Searcher(this.board);
     const r = searcher.search(depth, timeLimitMs);
     if (!r.bestMove) throw new EngineError('无棋可走');

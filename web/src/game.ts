@@ -21,6 +21,10 @@ export class GameController {
   /** 当前回放位置（records.length = 最新；< length = 浏览历史中） */
   private viewIndex = 0;
 
+  /** 当前生效的引擎（随对局模式切换） */
+  private engine: EngineAdapter;
+  private primaryEngine: EngineAdapter;
+
   private readonly opt: RenderOptions = {
     cell: 64,
     margin: 44,
@@ -32,7 +36,9 @@ export class GameController {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly engine: EngineAdapter,
+    engine: EngineAdapter,
+    /** 可选的第二引擎（如 Pikafish），由对局模式下拉切换 */
+    private readonly altEngine: EngineAdapter | null,
     private readonly statusBar: HTMLElement,
     private readonly moveList: HTMLElement,
     private readonly buttons: {
@@ -47,18 +53,41 @@ export class GameController {
       aiDepth: HTMLSelectElement;     // AI 深度
     },
   ) {
+    this.engine = engine;
+    this.primaryEngine = engine;
     this.bindEvents();
     this.render();
     // 人机模式且轮到 AI（执黑）→ 开局即思考
     this.maybeAiMove();
   }
 
-  /** 人机模式：AI 执黑 */
+  /** 人机模式：AI 执黑（本地引擎或 Pikafish） */
   private aiEnabled(): boolean {
-    return this.mode.select.value === 'pve';
+    const v = this.mode.select.value;
+    return v === 'pve' || v === 'pikafish';
   }
 
   private aiThinking = false;
+
+  /** 对局模式切换：换引擎并对齐局面 */
+  private onModeChange(): void {
+    if (!this.altEngine) return;
+    const v = this.mode.select.value;
+    const next = v === 'pikafish' ? this.altEngine : null;
+    if (next === null && this.engine === this.altEngine) {
+      // 切回本地引擎：main.ts 传入的主引擎引用
+      const primary = this.primaryEngine;
+      if (primary && primary !== this.engine) {
+        primary.loadFen(this.engine.getFen());
+        this.engine = primary;
+      }
+    } else if (next && next !== this.engine) {
+      next.loadFen(this.engine.getFen());
+      this.engine = next;
+    }
+    this.render();
+    this.maybeAiMove();
+  }
 
   /** 轮到 AI 且局面未结束 → 异步思考并落子 */
   private maybeAiMove(): void {
@@ -68,13 +97,20 @@ export class GameController {
     if (pos.turn !== 1) return; // AI 只执黑
     this.aiThinking = true;
     this.setStatus('🤔 AI 思考中…');
-    // setTimeout 让状态栏先渲染
-    setTimeout(() => {
+    // setTimeout 让状态栏先渲染；think 为异步（本地搜索 / UCI 桥接均适用）
+    const beforeLen = this.records.length;
+    const beforeView = this.viewIndex;
+    setTimeout(async () => {
       try {
         const depth = Number(this.mode.aiDepth.value);
-        const t = this.engine.think(depth, 3000);
+        const t = await this.engine.think(depth, 3000);
+        // 等待期间用户可能重开/悔棋/回放切换引擎，局面已变则丢弃本次结果
+        if (this.records.length !== beforeLen || this.viewIndex !== beforeView || this.viewIndex !== this.records.length) {
+          return;
+        }
         this.tryMove({ from: t.move.from, to: t.move.to });
-        this.setStatus(`🤖 AI（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}）`);
+        const src = this.mode.select.value === 'pikafish' ? 'Pikafish' : 'AI';
+        this.setStatus(`🤖 ${src}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}）`);
       } catch (err) {
         this.setStatus(`❌ AI 出错：${(err as Error).message}`);
       } finally {
@@ -85,6 +121,7 @@ export class GameController {
 
   private bindEvents(): void {
     this.canvas.addEventListener('click', (e) => this.onClick(e));
+    this.mode.select.addEventListener('change', () => this.onModeChange());
     this.buttons.undo.addEventListener('click', () => this.undo());
     this.buttons.reset.addEventListener('click', () => this.reset());
     this.buttons.first.addEventListener('click', () => this.seek(0));

@@ -66,11 +66,12 @@ export interface EngineAdapter {
   // ---- AI ----
 
   /**
-   * AI 思考并返回最佳走子（不执行）。
+   * AI 思考并返回最佳走子（不执行）。异步：外部引擎（UCI 桥接/Worker）走网络，
+   * 本地搜索实现也包装为 Promise，便于将来挪进 Web Worker。
    * depth = 搜索深度；timeLimitMs = 时间上限。
    * 引擎不支持搜索时抛 EngineError。
    */
-  think(depth: number, timeLimitMs?: number): { move: Move; score: number; depth: number; nodes: number; timeMs: number };
+  think(depth: number, timeLimitMs?: number): Promise<{ move: Move; score: number; depth: number; nodes: number; timeMs: number }>;
 }
 
 /** 引擎异常 */
