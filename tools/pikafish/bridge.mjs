@@ -132,6 +132,35 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // 蒸馏管线②：批量标注。body: { fens: string[], depth } → { results: [{fen, scoreCp, mate, ...}] }
+  // Pikafish 的 score 是行棋方视角；label.mjs 负责转红方视角
+  if (req.method === 'POST' && req.url === '/eval-batch') {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', async () => {
+      try {
+        const { fens, depth } = JSON.parse(body);
+        if (!Array.isArray(fens) || fens.length === 0) throw new Error('bad request');
+        const d = Math.min(Math.max(1, (depth | 0) || 14), 20);
+        const results = [];
+        for (const fen of fens) {
+          try {
+            const r = await engine.think(fen, d);
+            results.push({ fen, ...r });
+          } catch (err) {
+            results.push({ fen, error: String(err.message ?? err) });
+          }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ results }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err.message ?? err) }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 }).listen(PORT, '127.0.0.1', () => console.log(`[bridge] listening on http://127.0.0.1:${PORT}`));
