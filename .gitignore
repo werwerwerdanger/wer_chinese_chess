@@ -7,3 +7,6 @@ dist/
 # Pikafish 本地引擎（大文件，不入库：dist/ 由用户自行下载 release 解压）
 tools/pikafish/dist/
 tools/pikafish/*.7z
+
+# 蒸馏数据（大文件不入库）
+data/
