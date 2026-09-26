@@ -9,4 +9,5 @@ tools/pikafish/dist/
 tools/pikafish/*.7z
 
 # 蒸馏数据（大文件不入库）
-data/
+data/*
+!data/positions.txt.gz
