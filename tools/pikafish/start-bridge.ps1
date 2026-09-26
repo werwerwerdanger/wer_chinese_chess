@@ -1,4 +1,4 @@
-# Pikafish 启动脚本（PowerShell）
+﻿# Pikafish 启动脚本（PowerShell）
 # 用法：右键"使用 PowerShell 运行"，或 .\start-bridge.ps1
 # 前提：dist/ 下已解压 Pikafish-Windows-x86-64-universal.exe 与 pikafish.nnue
 
