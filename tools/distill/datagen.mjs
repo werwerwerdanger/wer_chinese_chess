@@ -1,0 +1,1214 @@
+// engine/src/constants.ts
+var BOARD_COLS = 9;
+var BOARD_ROWS = 10;
+var BOARD_SIZE = BOARD_COLS * BOARD_ROWS;
+function sq(row, col) {
+  return row * BOARD_COLS + col;
+}
+function rowOf(s) {
+  return s / BOARD_COLS | 0;
+}
+function colOf(s) {
+  return s % BOARD_COLS;
+}
+function onBoard(row, col) {
+  return row >= 0 && row < BOARD_ROWS && col >= 0 && col < BOARD_COLS;
+}
+function inPalace(row, col, color) {
+  if (col < 3 || col > 5) return false;
+  if (row < 0 || row > 9) return false;
+  return color === 0 /* Red */ ? row >= 7 : row <= 2;
+}
+function elephantZone(row, color) {
+  return color === 0 /* Red */ ? row >= 5 : row <= 4;
+}
+function pawnCrossed(row, color) {
+  return color === 0 /* Red */ ? row <= 4 : row >= 5;
+}
+var INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w";
+var PIECE_TO_FEN_CHAR = {
+  [0 /* RedKing */]: "K",
+  [1 /* RedAdvisor */]: "A",
+  [2 /* RedElephant */]: "B",
+  [3 /* RedHorse */]: "N",
+  [4 /* RedRook */]: "R",
+  [5 /* RedCannon */]: "C",
+  [6 /* RedPawn */]: "P",
+  [8 /* BlackKing */]: "k",
+  [9 /* BlackAdvisor */]: "a",
+  [10 /* BlackElephant */]: "b",
+  [11 /* BlackHorse */]: "n",
+  [12 /* BlackRook */]: "r",
+  [13 /* BlackCannon */]: "c",
+  [14 /* BlackPawn */]: "p"
+};
+var FEN_CHAR_TO_PIECE = {
+  K: 0 /* RedKing */,
+  A: 1 /* RedAdvisor */,
+  B: 2 /* RedElephant */,
+  N: 3 /* RedHorse */,
+  R: 4 /* RedRook */,
+  C: 5 /* RedCannon */,
+  P: 6 /* RedPawn */,
+  k: 8 /* BlackKing */,
+  a: 9 /* BlackAdvisor */,
+  b: 10 /* BlackElephant */,
+  n: 11 /* BlackHorse */,
+  r: 12 /* BlackRook */,
+  c: 13 /* BlackCannon */,
+  p: 14 /* BlackPawn */
+};
+function pieceFromFenChar(ch) {
+  return FEN_CHAR_TO_PIECE[ch] ?? 255 /* None */;
+}
+function colorOf(p) {
+  return p >> 3 & 1;
+}
+function typeOf(p) {
+  return p & 7;
+}
+function makeRng(seed) {
+  let s = seed;
+  return () => {
+    s ^= s << 13n;
+    s &= 0xffffffffffffffffn;
+    s ^= s >> 7n;
+    s ^= s << 17n;
+    s &= 0xffffffffffffffffn;
+    return s;
+  };
+}
+var rng = makeRng(0x9e3779b97f4a7c15n);
+var ZOBRIST_TURN = [rng(), rng()];
+var ZOBRIST_PIECE = Array.from(
+  { length: 15 },
+  () => Array.from({ length: BOARD_SIZE }, () => rng())
+);
+var PIECE_NAMES = {
+  [0 /* RedKing */]: "\u5E05",
+  [1 /* RedAdvisor */]: "\u4ED5",
+  [2 /* RedElephant */]: "\u76F8",
+  [3 /* RedHorse */]: "\u9A6C",
+  [4 /* RedRook */]: "\u8F66",
+  [5 /* RedCannon */]: "\u70AE",
+  [6 /* RedPawn */]: "\u5175",
+  [8 /* BlackKing */]: "\u5C06",
+  [9 /* BlackAdvisor */]: "\u58EB",
+  [10 /* BlackElephant */]: "\u8C61",
+  [11 /* BlackHorse */]: "\u9A6C",
+  [12 /* BlackRook */]: "\u8F66",
+  [13 /* BlackCannon */]: "\u70AE",
+  [14 /* BlackPawn */]: "\u5352"
+};
+var KING_OF = [0 /* RedKing */, 8 /* BlackKing */];
+
+// engine/src/board.ts
+var Board = class _Board {
+  /** 90 格棋盘，值为 Piece 枚举 */
+  squares = new Uint8Array(BOARD_SIZE);
+  /** 当前行棋方 */
+  turn = 0 /* Red */;
+  /** 双方将帅位置 */
+  kingSquare = new Int8Array(2).fill(-1);
+  /** 当前局面 Zobrist 键 */
+  hashKey = 0n;
+  constructor(fen = INITIAL_FEN) {
+    this.loadFen(fen);
+  }
+  /** 从 FEN 载入局面 */
+  loadFen(fen) {
+    this.squares.fill(255 /* None */);
+    this.kingSquare.fill(-1);
+    this.hashKey = 0n;
+    const [placement, side] = fen.trim().split(/\s+/);
+    if (!placement) throw new Error(`bad FEN: ${fen}`);
+    const rows = placement.split("/");
+    if (rows.length !== BOARD_ROWS) throw new Error(`FEN \u9700\u8981 10 \u884C\uFF0C\u5F97\u5230 ${rows.length}`);
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      let c = 0;
+      for (const ch of rows[r]) {
+        if (c >= BOARD_COLS) throw new Error(`\u7B2C ${r} \u884C\u8D85\u5BBD: ${rows[r]}`);
+        if (ch >= "1" && ch <= "9") {
+          c += ch.charCodeAt(0) - 48;
+        } else {
+          const p = pieceFromFenChar(ch);
+          if (p === 255 /* None */) throw new Error(`\u975E\u6CD5\u5B57\u7B26 '${ch}' in FEN`);
+          this.setPiece(sq(r, c), p);
+          c++;
+        }
+      }
+      if (c !== BOARD_COLS) throw new Error(`\u7B2C ${r} \u884C\u5BBD\u5EA6 ${c} \u2260 9`);
+    }
+    this.turn = side === "b" ? 1 /* Black */ : 0 /* Red */;
+    this.hashKey ^= ZOBRIST_TURN[this.turn];
+    if (this.kingSquare[0] < 0 || this.kingSquare[1] < 0) {
+      throw new Error("FEN \u7F3A\u5C11\u5C06/\u5E05");
+    }
+  }
+  /** 生成 FEN（round-trip 测试用） */
+  toFen() {
+    const rows = [];
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      let row = "";
+      let empty = 0;
+      for (let c = 0; c < BOARD_COLS; c++) {
+        const p = this.squares[sq(r, c)];
+        if (p === 255 /* None */) {
+          empty++;
+        } else {
+          if (empty > 0) {
+            row += String(empty);
+            empty = 0;
+          }
+          row += PIECE_TO_FEN_CHAR[p];
+        }
+      }
+      if (empty > 0) row += String(empty);
+      rows.push(row);
+    }
+    return `${rows.join("/")} ${this.turn === 0 /* Red */ ? "w" : "b"}`;
+  }
+  /** 放子（内部用，更新哈希与将位） */
+  setPiece(square, p) {
+    this.squares[square] = p;
+    this.hashKey ^= ZOBRIST_PIECE[p][square];
+    if (p === 0 /* RedKing */) this.kingSquare[0 /* Red */] = square;
+    else if (p === 8 /* BlackKing */) this.kingSquare[1 /* Black */] = square;
+  }
+  at(square) {
+    return this.squares[square];
+  }
+  /** 执行走子，返回撤销信息。调用方需保证 move 合法（由 movegen 产出）。 */
+  makeMove(move) {
+    const undo = {
+      captured: this.at(move.to),
+      hashKey: this.hashKey
+    };
+    const moving = this.at(move.from);
+    if (undo.captured !== 255 /* None */) {
+      this.hashKey ^= ZOBRIST_PIECE[undo.captured][move.to];
+      if (undo.captured === 0 /* RedKing */) this.kingSquare[0 /* Red */] = -1;
+      if (undo.captured === 8 /* BlackKing */) this.kingSquare[1 /* Black */] = -1;
+    }
+    this.hashKey ^= ZOBRIST_PIECE[moving][move.from];
+    this.squares[move.from] = 255 /* None */;
+    this.squares[move.to] = moving;
+    this.hashKey ^= ZOBRIST_PIECE[moving][move.to];
+    if (moving === 0 /* RedKing */) this.kingSquare[0 /* Red */] = move.to;
+    if (moving === 8 /* BlackKing */) this.kingSquare[1 /* Black */] = move.to;
+    this.turn ^= 1;
+    this.hashKey ^= ZOBRIST_TURN[0] ^ ZOBRIST_TURN[1];
+    return undo;
+  }
+  /** 撤销走子 */
+  unmakeMove(move, undo) {
+    const moved = this.at(move.to);
+    this.squares[move.from] = moved;
+    this.squares[move.to] = undo.captured;
+    if (moved === 0 /* RedKing */) this.kingSquare[0 /* Red */] = move.from;
+    if (moved === 8 /* BlackKing */) this.kingSquare[1 /* Black */] = move.from;
+    if (undo.captured === 0 /* RedKing */) this.kingSquare[0 /* Red */] = move.to;
+    if (undo.captured === 8 /* BlackKing */) this.kingSquare[1 /* Black */] = move.to;
+    this.turn ^= 1;
+    this.hashKey = undo.hashKey;
+  }
+  /** 克隆局面 */
+  clone() {
+    const b = Object.create(_Board.prototype);
+    b.squares.set(this.squares);
+    b.turn = this.turn;
+    b.kingSquare.set(this.kingSquare);
+    b.hashKey = this.hashKey;
+    return b;
+  }
+  /** 将帅是否照面（同一列且中间无子）— 用于合法性判定 */
+  kingsFacing() {
+    const rk = this.kingSquare[0 /* Red */];
+    const bk = this.kingSquare[1 /* Black */];
+    if (rk < 0 || bk < 0) return false;
+    const rc = colOf(rk), bc = colOf(bk);
+    if (rc !== bc) return false;
+    const rr = rowOf(rk), br = rowOf(bk);
+    for (let r = br + 1; r < rr; r++) {
+      if (this.squares[sq(r, rc)] !== 255 /* None */) return false;
+    }
+    return true;
+  }
+  /** 简易局面文本渲染（终端调试用） */
+  ascii() {
+    const files = "  0 1 2 3 4 5 6 7 8";
+    const sep = "  +------------------------+";
+    const lines = [files, sep];
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      let row = `${r} |`;
+      for (let c = 0; c < BOARD_COLS; c++) {
+        const p = this.squares[sq(r, c)];
+        const ch = p === 255 /* None */ ? "." : PIECE_TO_FEN_CHAR[p] ?? "?";
+        row += ch === "." ? " ." : ch === ch.toUpperCase() ? ` ${ch}` : ` ${ch}`;
+      }
+      row += " |";
+      lines.push(row);
+    }
+    lines.push(sep);
+    lines.push(`  turn: ${this.turn === 0 /* Red */ ? "Red" : "Black"}`);
+    return lines.join("\n");
+  }
+  /** 校验局面内部一致性（测试用） */
+  validateConsistency() {
+    for (let s = 0; s < BOARD_SIZE; s++) {
+      const p = this.squares[s];
+      if (p !== 255 /* None */ && (p & 7) === 0 && p !== 0 /* RedKing */ && p !== 8 /* BlackKing */) {
+        throw new Error(`\u683C ${s} \u975E\u6CD5\u68CB\u5B50\u7F16\u7801 ${p}`);
+      }
+    }
+    let h = 0n;
+    for (let s = 0; s < BOARD_SIZE; s++) {
+      const p = this.squares[s];
+      if (p !== 255 /* None */) h ^= ZOBRIST_PIECE[p][s];
+    }
+    h ^= ZOBRIST_TURN[this.turn];
+    if (h !== this.hashKey) throw new Error("Zobrist \u952E\u4E0E\u68CB\u76D8\u4E0D\u4E00\u81F4");
+    for (let s = 0; s < BOARD_SIZE; s++) {
+      if (this.squares[s] === 0 /* RedKing */ && this.kingSquare[0 /* Red */] !== s)
+        throw new Error("\u7EA2\u5E05\u4F4D\u7F6E\u7F13\u5B58\u5931\u6548");
+      if (this.squares[s] === 8 /* BlackKing */ && this.kingSquare[1 /* Black */] !== s)
+        throw new Error("\u9ED1\u5C06\u4F4D\u7F6E\u7F13\u5B58\u5931\u6548");
+    }
+    for (const c of [0 /* Red */, 1 /* Black */]) {
+      const ks = this.kingSquare[c];
+      if (ks >= 0 && !inPalace(rowOf(ks), colOf(ks), c)) throw new Error("\u5C06\u4E0D\u5728\u4E5D\u5BAB");
+    }
+  }
+};
+
+// engine/src/movegen.ts
+function generatePseudoLegalMoves(board, side) {
+  const moves = [];
+  const opp = side ^ 1;
+  for (let from = 0; from < 90; from++) {
+    const p = board.squares[from];
+    if (p === 255 /* None */ || colorOf(p) !== side) continue;
+    switch (typeOf(p)) {
+      case 0 /* King */:
+        genKing(board, from, side, opp, moves);
+        break;
+      case 1 /* Advisor */:
+        genAdvisor(board, from, side, opp, moves);
+        break;
+      case 2 /* Elephant */:
+        genElephant(board, from, side, opp, moves);
+        break;
+      case 3 /* Horse */:
+        genHorse(board, from, side, opp, moves);
+        break;
+      case 4 /* Rook */:
+        genRook(board, from, side, opp, moves);
+        break;
+      case 5 /* Cannon */:
+        genCannon(board, from, side, opp, moves);
+        break;
+      case 6 /* Pawn */:
+        genPawn(board, from, side, opp, moves);
+        break;
+    }
+  }
+  return moves;
+}
+function pushMove(board, from, to, opp, moves) {
+  const target = board.squares[to];
+  if (target === 255 /* None */ || colorOf(target) === opp) {
+    moves.push({ from, to, captured: target });
+  }
+}
+function genKing(board, from, side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dr, dc] of deltas) {
+    const nr = r + dr, nc = c + dc;
+    if (!inPalace(nr, nc, side)) continue;
+    pushMove(board, from, sq(nr, nc), opp, moves);
+  }
+}
+function genAdvisor(board, from, side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  const deltas = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+  for (const [dr, dc] of deltas) {
+    const nr = r + dr, nc = c + dc;
+    if (!inPalace(nr, nc, side)) continue;
+    pushMove(board, from, sq(nr, nc), opp, moves);
+  }
+}
+function genElephant(board, from, side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  const deltas = [[-2, -2], [-2, 2], [2, -2], [2, 2]];
+  for (const [dr, dc] of deltas) {
+    const nr = r + dr, nc = c + dc;
+    if (!onBoard(nr, nc)) continue;
+    if (!elephantZone(nr, side)) continue;
+    if (board.squares[sq(r + dr / 2, c + dc / 2)] !== 255 /* None */) continue;
+    pushMove(board, from, sq(nr, nc), opp, moves);
+  }
+}
+function genHorse(board, from, _side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  const table = [
+    [-2, -1, -1, 0],
+    [-2, 1, -1, 0],
+    [2, -1, 1, 0],
+    [2, 1, 1, 0],
+    [-1, -2, 0, -1],
+    [1, -2, 0, -1],
+    [-1, 2, 0, 1],
+    [1, 2, 0, 1]
+  ];
+  for (const [dr, dc, lr, lc] of table) {
+    const nr = r + dr, nc = c + dc;
+    if (!onBoard(nr, nc)) continue;
+    if (board.squares[sq(r + lr, c + lc)] !== 255 /* None */) continue;
+    pushMove(board, from, sq(nr, nc), opp, moves);
+  }
+}
+function genRook(board, from, _side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    let nr = r + dr, nc = c + dc;
+    while (onBoard(nr, nc)) {
+      const target = board.squares[sq(nr, nc)];
+      if (target === 255 /* None */) {
+        moves.push({ from, to: sq(nr, nc), captured: 255 /* None */ });
+      } else {
+        if (colorOf(target) === opp) moves.push({ from, to: sq(nr, nc), captured: target });
+        break;
+      }
+      nr += dr;
+      nc += dc;
+    }
+  }
+}
+function genCannon(board, from, _side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    let nr = r + dr, nc = c + dc;
+    while (onBoard(nr, nc) && board.squares[sq(nr, nc)] === 255 /* None */) {
+      moves.push({ from, to: sq(nr, nc), captured: 255 /* None */ });
+      nr += dr;
+      nc += dc;
+    }
+    nr += dr;
+    nc += dc;
+    while (onBoard(nr, nc)) {
+      const target = board.squares[sq(nr, nc)];
+      if (target !== 255 /* None */) {
+        if (colorOf(target) === opp) moves.push({ from, to: sq(nr, nc), captured: target });
+        break;
+      }
+      nr += dr;
+      nc += dc;
+    }
+  }
+}
+function genPawn(board, from, side, opp, moves) {
+  const r = rowOf(from), c = colOf(from);
+  const forward = side === 0 /* Red */ ? -1 : 1;
+  const nr = r + forward;
+  if (onBoard(nr, c)) pushMove(board, from, sq(nr, c), opp, moves);
+  if (pawnCrossed(r, side)) {
+    if (c - 1 >= 0) pushMove(board, from, sq(r, c - 1), opp, moves);
+    if (c + 1 < BOARD_COLS) pushMove(board, from, sq(r, c + 1), opp, moves);
+  }
+}
+
+// engine/src/legality.ts
+function inCheck(board, side) {
+  const kingSq = board.kingSquare[side];
+  if (kingSq < 0) return true;
+  const kr = rowOf(kingSq), kc = colOf(kingSq);
+  const opp = side ^ 1;
+  for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    let r = kr + dr, c = kc + dc;
+    let firstPiece = 255 /* None */;
+    let firstR = -1, firstC = -1;
+    while (onBoard(r, c)) {
+      const p = board.squares[sq(r, c)];
+      if (p !== 255 /* None */) {
+        firstPiece = p;
+        firstR = r;
+        firstC = c;
+        break;
+      }
+      r += dr;
+      c += dc;
+    }
+    if (firstPiece === 255 /* None */) continue;
+    const t = typeOf(firstPiece);
+    if (colorOf(firstPiece) === opp) {
+      if (t === 4 /* Rook */) return true;
+      if (t === 0 /* King */) return true;
+      if (t === 6 /* Pawn */) {
+        const pawnForward = colorOf(firstPiece) === 0 /* Red */ ? 1 : -1;
+        if (firstR + pawnForward === kr && firstC === kc) return true;
+        if (pawnCrossed(firstR, colorOf(firstPiece)) && firstR === kr && Math.abs(firstC - kc) === 1) return true;
+      }
+    }
+    r = firstR + dr;
+    c = firstC + dc;
+    while (onBoard(r, c)) {
+      const p = board.squares[sq(r, c)];
+      if (p !== 255 /* None */) {
+        if (colorOf(p) === opp && typeOf(p) === 5 /* Cannon */) return true;
+        break;
+      }
+      r += dr;
+      c += dc;
+    }
+  }
+  const horseDeltas = [
+    // [mr-kr, mc-kc, legDr, legDc] leg 相对将位
+    [-2, -1, -1, 0],
+    [-2, 1, -1, 0],
+    [2, -1, 1, 0],
+    [2, 1, 1, 0],
+    [-1, -2, 0, -1],
+    [1, -2, 0, -1],
+    [-1, 2, 0, 1],
+    [1, 2, 0, 1]
+  ];
+  for (const [dr, dc, lr, lc] of horseDeltas) {
+    const mr = kr + dr, mc = kc + dc;
+    if (!onBoard(mr, mc)) continue;
+    const p = board.squares[sq(mr, mc)];
+    if (p === 255 /* None */ || colorOf(p) !== opp) continue;
+    if (typeOf(p) !== 3 /* Horse */) continue;
+    const legR = kr + lr, legC = kc + lc;
+    if (board.squares[sq(legR, legC)] === 255 /* None */) return true;
+  }
+  return false;
+}
+function generateLegalMoves(board, side) {
+  const pseudo = generatePseudoLegalMoves(board, side);
+  const legal = [];
+  for (const m of pseudo) {
+    const undo = board.makeMove(m);
+    if (!inCheck(board, side) && !board.kingsFacing()) legal.push(m);
+    board.unmakeMove(m, undo);
+  }
+  return legal;
+}
+function isCheckmate(board, side) {
+  if (!inCheck(board, side)) return false;
+  return generateLegalMoves(board, side).length === 0;
+}
+function isStalemate(board, side) {
+  if (inCheck(board, side)) return false;
+  return generateLegalMoves(board, side).length === 0;
+}
+
+// engine-ai/src/eval.ts
+var MATE_SCORE = 1e4;
+var PIECE_VALUES = [
+  1e4,
+  // King
+  120,
+  // Advisor
+  120,
+  // Elephant
+  400,
+  // Horse
+  900,
+  // Rook
+  450,
+  // Cannon
+  50
+  // Pawn
+];
+var PST_PAWN = [
+  9,
+  9,
+  9,
+  11,
+  13,
+  11,
+  9,
+  9,
+  9,
+  19,
+  24,
+  34,
+  40,
+  40,
+  40,
+  34,
+  24,
+  19,
+  7,
+  12,
+  16,
+  18,
+  18,
+  18,
+  16,
+  12,
+  7,
+  7,
+  10,
+  13,
+  15,
+  15,
+  15,
+  13,
+  10,
+  7,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+];
+var PST_ROOK = [
+  14,
+  14,
+  12,
+  18,
+  16,
+  18,
+  12,
+  14,
+  14,
+  16,
+  20,
+  18,
+  24,
+  26,
+  24,
+  18,
+  20,
+  16,
+  12,
+  12,
+  12,
+  18,
+  18,
+  18,
+  12,
+  12,
+  12,
+  12,
+  18,
+  16,
+  22,
+  22,
+  22,
+  16,
+  18,
+  12,
+  12,
+  14,
+  12,
+  18,
+  18,
+  18,
+  12,
+  14,
+  12,
+  12,
+  16,
+  14,
+  20,
+  20,
+  20,
+  14,
+  16,
+  12,
+  6,
+  10,
+  8,
+  14,
+  14,
+  14,
+  8,
+  10,
+  6,
+  4,
+  8,
+  6,
+  14,
+  12,
+  14,
+  6,
+  8,
+  4,
+  8,
+  4,
+  8,
+  16,
+  8,
+  16,
+  8,
+  4,
+  8,
+  -2,
+  10,
+  6,
+  14,
+  12,
+  14,
+  6,
+  10,
+  -2
+];
+var PST_HORSE = [
+  4,
+  8,
+  16,
+  12,
+  4,
+  12,
+  16,
+  8,
+  4,
+  4,
+  10,
+  28,
+  16,
+  8,
+  16,
+  28,
+  10,
+  4,
+  12,
+  14,
+  16,
+  20,
+  18,
+  20,
+  16,
+  14,
+  12,
+  8,
+  24,
+  18,
+  24,
+  20,
+  24,
+  18,
+  24,
+  8,
+  6,
+  16,
+  14,
+  18,
+  16,
+  18,
+  14,
+  16,
+  6,
+  4,
+  12,
+  16,
+  14,
+  12,
+  14,
+  16,
+  12,
+  4,
+  2,
+  6,
+  8,
+  6,
+  10,
+  6,
+  8,
+  6,
+  2,
+  4,
+  2,
+  6,
+  4,
+  4,
+  4,
+  6,
+  2,
+  4,
+  0,
+  2,
+  4,
+  4,
+  4,
+  4,
+  4,
+  2,
+  0,
+  0,
+  -4,
+  0,
+  0,
+  0,
+  0,
+  0,
+  -4,
+  0
+];
+var PST_CANNON = [
+  6,
+  4,
+  0,
+  -10,
+  -12,
+  -10,
+  0,
+  4,
+  6,
+  2,
+  2,
+  0,
+  -4,
+  -14,
+  -4,
+  0,
+  2,
+  2,
+  2,
+  2,
+  0,
+  -10,
+  -8,
+  -10,
+  0,
+  2,
+  2,
+  0,
+  0,
+  -2,
+  4,
+  10,
+  4,
+  -2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  2,
+  4,
+  2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  -2,
+  0,
+  4,
+  0,
+  -2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  2,
+  6,
+  2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  2,
+  6,
+  2,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  2,
+  6,
+  2,
+  0,
+  0,
+  0
+];
+var PST_ZERO = new Array(90).fill(0);
+var PST = [
+  PST_ZERO,
+  // King
+  PST_ZERO,
+  // Advisor
+  PST_ZERO,
+  // Elephant
+  PST_HORSE,
+  PST_ROOK,
+  PST_CANNON,
+  PST_PAWN
+];
+function evaluate(board) {
+  let score = 0;
+  const squares = board.squares;
+  for (let i = 0; i < 90; i++) {
+    const p = squares[i];
+    if (p === 255) continue;
+    const type = p & 7;
+    const r = i / 9 | 0;
+    const c = i % 9;
+    if (p >> 3 & 1) {
+      score -= PIECE_VALUES[type] + PST[type][(9 - r) * 9 + c];
+    } else {
+      score += PIECE_VALUES[type] + PST[type][i];
+    }
+  }
+  return score;
+}
+function mvvlva(victim, attacker) {
+  if (victim === 255) return 0;
+  const v = PIECE_VALUES[victim & 7];
+  const a = PIECE_VALUES[attacker & 7];
+  return v * 10 - a;
+}
+
+// engine-ai/src/search.ts
+var NO_MOVE = { from: -1, to: -1, captured: 255 };
+var MAX_PLY = 64;
+var Searcher = class {
+  board;
+  tt = /* @__PURE__ */ new Map();
+  ttMax;
+  nodes = 0;
+  history = /* @__PURE__ */ new Map();
+  // "from-to" → 排序分
+  /** 搜索中检出（当前走子方被将死/困毙）时由 makeMove 感知 */
+  searchAborted = false;
+  constructor(board, ttMax = 1 << 18) {
+    this.board = board;
+    this.ttMax = ttMax;
+  }
+  /** 清空置换表（新对局/悔棋后调用，防止跨局面污染） */
+  clear() {
+    this.tt.clear();
+    this.history.clear();
+  }
+  /**
+   * 迭代加深搜索入口。
+   * @param maxDepth 最大深度
+   * @param timeLimitMs 时间上限（默认 3s，软限制，在节点间检查）
+   */
+  search(maxDepth, timeLimitMs = 3e3) {
+    const start = Date.now();
+    this.nodes = 0;
+    this.searchAborted = false;
+    let best = NO_MOVE;
+    let bestScore = 0;
+    let completedDepth = 0;
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      const deadlineHit = () => Date.now() - start > timeLimitMs;
+      const result = this.searchRoot(depth, deadlineHit);
+      if (this.searchAborted) break;
+      best = result.move;
+      bestScore = result.score;
+      completedDepth = depth;
+      if (Math.abs(bestScore) >= MATE_SCORE - 100) break;
+    }
+    return {
+      bestMove: best.from >= 0 ? best : null,
+      score: bestScore,
+      depth: completedDepth,
+      nodes: this.nodes,
+      timeMs: Date.now() - start
+    };
+  }
+  searchRoot(depth, deadlineHit) {
+    const side = this.board.turn;
+    const sign = side === 0 ? 1 : -1;
+    const moves = this.orderedRootMoves();
+    let bestMove = moves[0] ?? NO_MOVE;
+    let bestScore = -Infinity;
+    for (const m of moves) {
+      if (deadlineHit()) {
+        this.searchAborted = true;
+        return { move: bestMove, score: bestScore };
+      }
+      const undo = this.board.makeMove(m);
+      let score;
+      if (this.noMovesFor(this.board.turn)) {
+        score = (MATE_SCORE - depth) * (side === 0 ? 1 : -1) * sign;
+      } else {
+        score = -this.alphabeta(depth - 1, -Infinity, Infinity, sign === 1 ? -1 : 1, deadlineHit, 1);
+      }
+      this.board.unmakeMove(m, undo);
+      if (this.searchAborted) return { move: bestMove, score: bestScore };
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = m;
+      }
+    }
+    return { move: bestMove, score: bestScore };
+  }
+  /**
+   * negamax alpha-beta 主体。sign = 当前方视角系数（红+1/黑-1）。
+   */
+  alphabeta(depth, alpha, beta, sign, deadlineHit, ply) {
+    this.nodes++;
+    if (ply >= MAX_PLY) {
+      return sign * this.quiescence(alpha, beta, sign, 0, deadlineHit);
+    }
+    if (depth <= 0) {
+      return sign * this.quiescence(alpha, beta, sign, 4, deadlineHit);
+    }
+    const key = this.board.hashKey;
+    const ttEntry = this.tt.get(key);
+    if (ttEntry && ttEntry.depth >= depth) {
+      if (ttEntry.flag === 0 /* Exact */) return ttEntry.score;
+      if (ttEntry.flag === 1 /* Lower */ && ttEntry.score >= beta) return ttEntry.score;
+      if (ttEntry.flag === 2 /* Upper */ && ttEntry.score <= alpha) return ttEntry.score;
+    }
+    const checked = inCheck(this.board, this.board.turn);
+    if (checked && depth < 3 && ply < MAX_PLY - 8) depth++;
+    const moves = this.orderedMoves(ttEntry?.bestMove);
+    let bestScore = -Infinity;
+    let bestMove = NO_MOVE;
+    let searched = 0;
+    const alphaOrig = alpha;
+    for (const m of moves) {
+      if ((this.nodes & 1023) === 0 && deadlineHit()) {
+        this.searchAborted = true;
+        return alpha;
+      }
+      const undo = this.board.makeMove(m);
+      let score;
+      if (this.noMovesFor(this.board.turn)) {
+        score = MATE_SCORE - depth;
+      } else {
+        score = -this.alphabeta(depth - 1, -beta, -alpha, -sign, deadlineHit, ply + 1);
+      }
+      this.board.unmakeMove(m, undo);
+      searched++;
+      if (this.searchAborted) return alpha;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = m;
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) {
+          const hk = `${m.from}-${m.to}`;
+          this.history.set(hk, (this.history.get(hk) ?? 0) + depth * depth);
+          break;
+        }
+      }
+    }
+    if (searched === 0) {
+      return -MATE_SCORE + depth;
+    }
+    if (!this.searchAborted) {
+      const flag = bestScore <= alphaOrig ? 2 /* Upper */ : bestScore >= beta ? 1 /* Lower */ : 0 /* Exact */;
+      if (this.tt.size >= this.ttMax) this.evictTT();
+      this.tt.set(key, { depth, score: bestScore, flag, bestMove });
+    }
+    return bestScore;
+  }
+  /** 静态搜索：只延伸吃子着法，直到局面安静 */
+  quiescence(alpha, beta, sign, qdepth, deadlineHit) {
+    this.nodes++;
+    const standPat = sign * evaluate(this.board);
+    if (qdepth <= 0 || (this.nodes & 1023) === 0 && deadlineHit()) {
+      this.searchAborted = this.searchAborted || (this.nodes & 1023) === 0 && deadlineHit();
+      return standPat;
+    }
+    if (standPat >= beta) return standPat;
+    if (standPat > alpha) alpha = standPat;
+    const captures = generatePseudoLegalMoves(this.board, this.board.turn).filter((m) => m.captured !== 255).sort((a, b) => this.captureScore(b) - this.captureScore(a));
+    for (const m of captures) {
+      const undo = this.board.makeMove(m);
+      if (inCheck(this.board, this.board.turn === 0 ? 1 : 0)) {
+        this.board.unmakeMove(m, undo);
+        continue;
+      }
+      const score = -this.quiescence(-beta, -alpha, -sign, qdepth - 1, deadlineHit);
+      this.board.unmakeMove(m, undo);
+      if (score >= beta) return score;
+      if (score > alpha) alpha = score;
+    }
+    return alpha;
+  }
+  /** side 方是否无合法走子（将死/困毙判定） */
+  noMovesFor(side) {
+    const pseudo = generatePseudoLegalMoves(this.board, side);
+    for (const m of pseudo) {
+      const undo = this.board.makeMove(m);
+      const ok = !inCheck(this.board, side) && !this.board.kingsFacing();
+      this.board.unmakeMove(m, undo);
+      if (ok) return false;
+    }
+    return true;
+  }
+  captureScore(m) {
+    return mvvlva(m.captured, this.board.at(m.from));
+  }
+  /** 根节点排序：置换表最佳 + 历史 + 吃子 */
+  orderedRootMoves() {
+    const ttBest = this.tt.get(this.board.hashKey)?.bestMove;
+    return this.legalMovesSorted(ttBest);
+  }
+  orderedMoves(ttBest) {
+    return this.legalMovesSorted(ttBest);
+  }
+  /** 生成合法走子并排序：TT最佳 > 吃子(MVV-LVA) > 历史启发 */
+  legalMovesSorted(ttBest) {
+    const side = this.board.turn;
+    const pseudo = generatePseudoLegalMoves(this.board, side);
+    const legal = [];
+    for (const m of pseudo) {
+      const undo = this.board.makeMove(m);
+      if (!inCheck(this.board, side) && !this.board.kingsFacing()) legal.push(m);
+      this.board.unmakeMove(m, undo);
+    }
+    return legal.sort((a, b) => {
+      if (ttBest && a.from === ttBest.from && a.to === ttBest.to) return -1;
+      if (ttBest && b.from === ttBest.from && b.to === ttBest.to) return 1;
+      const ca = a.captured !== 255 ? this.captureScore(a) : 0;
+      const cb = b.captured !== 255 ? this.captureScore(b) : 0;
+      if (ca !== cb) return cb - ca;
+      const ha = this.history.get(`${a.from}-${a.to}`) ?? 0;
+      const hb = this.history.get(`${b.from}-${b.to}`) ?? 0;
+      return hb - ha;
+    });
+  }
+  evictTT() {
+    let i = 0;
+    for (const k of this.tt.keys()) {
+      this.tt.delete(k);
+      if (++i >= this.ttMax / 2) break;
+    }
+  }
+};
+function findBestMove(board, depth = 4, timeLimitMs = 3e3) {
+  const s = new Searcher(board);
+  return s.search(depth, timeLimitMs);
+}
+
+// tools/distill/datagen.ts
+import { appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
+function parseArgs() {
+  const argv = process.argv.slice(2);
+  const get = (k, d) => {
+    const i = argv.indexOf(`--${k}`);
+    return i >= 0 && argv[i + 1] !== void 0 ? argv[i + 1] : d;
+  };
+  return {
+    games: Number(get("games", "1000")),
+    depth: Number(get("depth", "3")),
+    openingPlies: Number(get("opening-plies", "8")),
+    maxPly: Number(get("max-ply", "160")),
+    timeLimitMs: Number(get("time", "1000")),
+    out: get("out", "data/positions.txt")
+  };
+}
+function perturbOpening(board, plies) {
+  for (let i = 0; i < plies; i++) {
+    const moves = generateLegalMoves(board, board.turn);
+    if (moves.length === 0) return;
+    const m = moves[Math.floor(Math.random() * moves.length)];
+    board.makeMove(m);
+  }
+}
+function step(board, args) {
+  const moves = generateLegalMoves(board, board.turn);
+  if (moves.length === 0) return false;
+  if (isCheckmate(board, board.turn) || isStalemate(board, board.turn)) return false;
+  const r = findBestMove(board, args.depth, args.timeLimitMs);
+  if (!r.bestMove) return false;
+  board.makeMove(r.bestMove);
+  return true;
+}
+function main() {
+  const args = parseArgs();
+  if (!existsSync(dirname(args.out))) mkdirSync(dirname(args.out), { recursive: true });
+  const t0 = Date.now();
+  let totalPositions = 0;
+  let finished = 0;
+  for (let g = 1; g <= args.games; g++) {
+    const board = new Board(INITIAL_FEN);
+    perturbOpening(board, args.openingPlies);
+    const seen = /* @__PURE__ */ new Set();
+    let plies = 0;
+    for (; plies < args.maxPly; plies++) {
+      const fen = board.toFen();
+      if (!seen.has(fen)) {
+        seen.add(fen);
+        appendFileSync(args.out, fen + "\n");
+        totalPositions++;
+      }
+      if (!step(board, args)) break;
+    }
+    finished++;
+    if (g % 50 === 0 || g === args.games) {
+      const dt = (Date.now() - t0) / 1e3;
+      process.stdout.write(
+        `[datagen] \u5C40 ${g}/${args.games}  \u5C40\u9762 ${totalPositions}  \u5747\u901F ${(dt / g).toFixed(1)}s/\u5C40  \u9884\u8BA1\u5269\u4F59 ${(dt / g * (args.games - g) / 60).toFixed(0)} \u5206\u949F
+`
+      );
+    }
+  }
+  console.log(`[datagen] \u5B8C\u6210\uFF1A${finished} \u5C40\uFF0C\u5171 ${totalPositions} \u4E2A\u5C40\u9762 \u2192 ${args.out}`);
+  console.log(`[datagen] \u4E0B\u4E00\u6B65\uFF1Anode tools/distill/label.mjs --in ${args.out} --out data/labeled.txt`);
+}
+main();

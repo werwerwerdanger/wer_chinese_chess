@@ -20,6 +20,9 @@ import { evaluate, mvvlva, MATE_SCORE } from './eval.js';
 /** 无走子哨兵 */
 const NO_MOVE: Move = { from: -1, to: -1, captured: 255 as never };
 
+/** 递归层数硬上限——防长将循环 + 将军延伸无限递归爆栈 */
+const MAX_PLY = 64;
+
 const enum TTFlag { Exact = 0, Lower = 1, Upper = 2 }
 
 interface TTEntry {
@@ -100,7 +103,7 @@ export class Searcher {
       if (this.noMovesFor(this.board.turn)) {
         score = (MATE_SCORE - depth) * (side === 0 ? 1 : -1) * sign;
       } else {
-        score = -this.alphabeta(depth - 1, -Infinity, Infinity, sign === 1 ? -1 : 1, deadlineHit);
+        score = -this.alphabeta(depth - 1, -Infinity, Infinity, sign === 1 ? -1 : 1, deadlineHit, 1);
       }
       this.board.unmakeMove(m, undo);
 
@@ -122,8 +125,14 @@ export class Searcher {
     beta: number,
     sign: number,
     deadlineHit: () => boolean,
+    ply: number,
   ): number {
     this.nodes++;
+
+    // 递归硬上限：防长将循环 + 将军延伸导致爆栈
+    if (ply >= MAX_PLY) {
+      return sign * this.quiescence(alpha, beta, sign, 0, deadlineHit);
+    }
 
     // 重复局面（Zobrist 相同）判和 → 0 分。简化处理：当前 hash 出现在 TT 的 Exact 表项
     // （更严谨需要历史 hash 列表；v1 从简）
@@ -141,8 +150,8 @@ export class Searcher {
     }
 
     const checked = inCheck(this.board, this.board.turn);
-    // 将军延伸：被将军时加深一层（不白算）
-    if (checked && depth < 3) depth++;
+    // 将军延伸：被将军时加深一层（不白算）；ply 上限内才延伸
+    if (checked && depth < 3 && ply < MAX_PLY - 8) depth++;
 
     const moves = this.orderedMoves(ttEntry?.bestMove);
     let bestScore = -Infinity;
@@ -161,7 +170,7 @@ export class Searcher {
         // 对手无棋可走：将死/困毙 → 对当前方大优
         score = MATE_SCORE - depth;
       } else {
-        score = -this.alphabeta(depth - 1, -beta, -alpha, -sign, deadlineHit);
+        score = -this.alphabeta(depth - 1, -beta, -alpha, -sign, deadlineHit, ply + 1);
       }
       this.board.unmakeMove(m, undo);
       searched++;
