@@ -1,13 +1,16 @@
 /**
- * Pikafish UCI 桥接服务 — 让浏览器前端能调用本地 Pikafish 引擎
+ * Pikafish UCI 桥接服务 — 让浏览器前端/蒸馏标注脚本能调用本地 Pikafish 引擎
  *
  * 浏览器无法直接 spawn 进程，本服务作为薄代理：
  *   POST /think  body: { fen, depth }  →  { move, scoreCp, mate, depth, nodes, timeMs }
+ *   POST /eval-batch  body: { fens: string[], depth }  →  { results: [{fen, scoreCp, mate, ...}] }
  *
- * Pikafish 无状态处理：每个请求 position fen 重设，go depth N，等 bestmove。
+ * 引擎池：多个 Pikafish 进程并行处理批量请求（环境变量 PIKAFISH_WORKERS 可调，默认 12）。
+ * 单实例串行处理分到自己的请求；实例崩溃自动重启；毒局面（非法 FEN）重试后仍死则跳过。
  * 启动：node bridge.mjs  （默认端口 8788）
  */
 import http from 'node:http';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,11 +19,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXE = path.join(__dirname, 'dist', 'Pikafish-Windows-x86-64-universal.exe');
 const CWD = path.join(__dirname, 'dist');
 const PORT = 8788;
+const WORKERS = Math.max(1, Math.min(Number(process.env.PIKAFISH_WORKERS ?? 12), os.cpus().length));
 
-/** 常驻 UCI 引擎进程，请求串行处理（象棋思考天然互斥）；崩溃自动重启 */
+/** 单个 UCI 引擎进程：串行处理分配给它的请求；崩溃自动重启 */
 class UciEngine {
-  constructor() {
+  constructor(id) {
+    this.id = id;
     this.alive = false;
+    this.busy = Promise.resolve(); // 本实例的串行队列
     this.start();
   }
 
@@ -43,27 +49,26 @@ class UciEngine {
         }
       }
     });
-    this.proc.on('error', (e) => console.error(`[bridge] pikafish spawn error: ${e.message}`));
-    // 引擎 stderr 原样打到 bridge 控制台
     this.proc.stderr.setEncoding('utf8');
-    this.proc.stderr.on('data', (c) => process.stderr.write('[pikafish:err] ' + c));
+    this.proc.stderr.on('data', (c) => process.stderr.write(`[eng${this.id}:err] ` + c));
+    this.proc.on('error', (e) => console.error(`[eng${this.id}] spawn error: ${e.message}`));
     // 引擎退出时倒出黑匣子，看它临死前最后的输出
     this.proc.on('exit', (code) => {
       this.alive = false;
-      const tail = this.recent.slice(-15).map((l) => `    ${l}`).join('\n');
-      console.error(`[bridge] pikafish exited: ${code}\n[bridge] 最后输出:\n${tail || '    (无输出)'}`);
+      const tail = this.recent.slice(-10).map((l) => `    ${l}`).join('\n');
+      console.error(`[eng${this.id}] pikafish exited: ${code}\n[eng${this.id}] 最后输出:\n${tail || '    (无输出)'}`);
       setTimeout(() => this.restart(), 3000);
     });
-    this.alive = true;
   }
 
   async restart() {
     try {
       this.start();
       await this.ready();
-      console.error('[bridge] pikafish 重启完成，恢复服务');
+      this.alive = true;
+      console.error(`[eng${this.id}] pikafish 重启完成，恢复服务`);
     } catch (err) {
-      console.error(`[bridge] pikafish 重启失败: ${err.message}，5 秒后再试`);
+      console.error(`[eng${this.id}] 重启失败: ${err.message}，5 秒后再试`);
       setTimeout(() => this.restart(), 5000);
     }
   }
@@ -78,7 +83,7 @@ class UciEngine {
   }
 
   /** 等待匹配谓词的行出现，返回该行（不消费其他行） */
-  waitFor(pred, timeoutMs = 120000) {
+  waitFor(pred, timeoutMs = 60000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       const tick = () => {
@@ -97,6 +102,21 @@ class UciEngine {
     await this.waitFor((l) => l === 'uciok');
     this.send('isready');
     await this.waitFor((l) => l === 'readyok');
+  }
+
+  async init() {
+    await this.ready();
+    this.alive = true;
+  }
+
+  /** 等本实例重启完成（供毒局面崩掉后的重试用） */
+  ensureAlive() {
+    if (this.alive) return Promise.resolve();
+    return new Promise((resolve) => {
+      const t = setInterval(() => {
+        if (this.alive) { clearInterval(t); resolve(); }
+      }, 300);
+    });
   }
 
   /** 跑一次搜索，返回 bestmove 与统计 */
@@ -136,17 +156,33 @@ class UciEngine {
   }
 }
 
-const engine = new UciEngine();
-await engine.ready();
-console.log('[bridge] pikafish ready');
+// --- 引擎池 ---
+const engines = [];
+for (let i = 0; i < WORKERS; i++) engines.push(new UciEngine(i));
+for (const e of engines) await e.init();
+console.log(`[bridge] ${WORKERS} 个 Pikafish 实例就绪`);
 
-/** 串行队列：同一时刻只允许一个请求驱动引擎，防止 UCI 命令流交错 */
-let chain = Promise.resolve();
-const enqueue = (fn) => {
-  const p = chain.then(fn);
-  chain = p.catch(() => {});
+let rr = 0;
+
+/** 单个局面评估：等实例活着 → 搜索 → 崩了（毒局面）重试至多 3 次 */
+async function evalOne(e, fen, depth) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await e.ensureAlive();
+    try {
+      return { fen, ...(await e.think(fen, depth)) };
+    } catch (err) {
+      if (attempt === 2) return { fen, error: String(err.message ?? err) };
+    }
+  }
+}
+
+/** 轮询分配到引擎池，返回带串行保证的 Promise */
+function submitEval(fen, depth) {
+  const e = engines[rr++ % engines.length];
+  const p = e.busy.then(() => evalOne(e, fen, depth));
+  e.busy = p.catch(() => {});
   return p;
-};
+}
 
 http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -156,7 +192,7 @@ http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, name: 'Pikafish 2026-09-06' }));
+    res.end(JSON.stringify({ ok: true, name: 'Pikafish 2026-09-06', workers: WORKERS }));
     return;
   }
 
@@ -167,7 +203,8 @@ http.createServer(async (req, res) => {
       try {
         const { fen, depth } = JSON.parse(body);
         if (!fen || !Number.isFinite(depth)) throw new Error('bad request');
-        const r = await enqueue(() => engine.think(fen, Math.min(Math.max(1, depth | 0), 20)));
+        const r = await submitEval(fen, Math.min(Math.max(1, depth | 0), 20));
+        if (r.error) throw new Error(r.error);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(r));
       } catch (err) {
@@ -188,18 +225,7 @@ http.createServer(async (req, res) => {
         const { fens, depth } = JSON.parse(body);
         if (!Array.isArray(fens) || fens.length === 0) throw new Error('bad request');
         const d = Math.min(Math.max(1, (depth | 0) || 14), 20);
-        const results = await enqueue(async () => {
-          const out = [];
-          for (const fen of fens) {
-            try {
-              const r = await engine.think(fen, d);
-              out.push({ fen, ...r });
-            } catch (err) {
-              out.push({ fen, error: String(err.message ?? err) });
-            }
-          }
-          return out;
-        });
+        const results = await Promise.all(fens.map((fen) => submitEval(fen, d)));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ results }));
       } catch (err) {
