@@ -26,6 +26,7 @@ class UciEngine {
   constructor(id) {
     this.id = id;
     this.alive = false;
+    this.available = false; // ready 握手完成才算真正可用
     this.busy = Promise.resolve(); // 本实例的串行队列
     this.start();
   }
@@ -52,23 +53,28 @@ class UciEngine {
     this.proc.stderr.setEncoding('utf8');
     this.proc.stderr.on('data', (c) => process.stderr.write(`[eng${this.id}:err] ` + c));
     this.proc.on('error', (e) => console.error(`[eng${this.id}] spawn error: ${e.message}`));
+    // 引擎暴死时 stdin 的异步 EPIPE 无法同步捕获，吞掉由 alive/available 标志统一处理
+    this.proc.stdin.on('error', () => {});
     // 引擎退出时倒出黑匣子，看它临死前最后的输出
     this.proc.on('exit', (code) => {
       this.alive = false;
+      this.available = false;
       const tail = this.recent.slice(-10).map((l) => `    ${l}`).join('\n');
       console.error(`[eng${this.id}] pikafish exited: ${code}\n[eng${this.id}] 最后输出:\n${tail || '    (无输出)'}`);
       setTimeout(() => this.restart(), 3000);
     });
-    this.alive = true; // spawn 成功即视为可用；exit 事件再置 false
+    this.alive = true; // spawn 成功即允许握手命令；exit 事件再置 false
   }
 
   async restart() {
     try {
       this.start();
       await this.ready();
+      this.available = true; // 握手完成后才放行业务请求
       console.error(`[eng${this.id}] pikafish 重启完成，恢复服务`);
     } catch (err) {
       this.alive = false;
+      this.available = false;
       console.error(`[eng${this.id}] 重启失败: ${err.message}，5 秒后再试`);
       setTimeout(() => this.restart(), 5000);
     }
@@ -107,14 +113,15 @@ class UciEngine {
 
   async init() {
     await this.ready();
+    this.available = true;
   }
 
-  /** 等本实例重启完成（供毒局面崩掉后的重试用） */
+  /** 等本实例 ready 握手完成（毒局面崩掉后的重试用） */
   ensureAlive() {
-    if (this.alive) return Promise.resolve();
+    if (this.available) return Promise.resolve();
     return new Promise((resolve) => {
       const t = setInterval(() => {
-        if (this.alive) { clearInterval(t); resolve(); }
+        if (this.available) { clearInterval(t); resolve(); }
       }, 300);
     });
   }
