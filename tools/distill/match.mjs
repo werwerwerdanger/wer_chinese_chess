@@ -1266,10 +1266,16 @@ var DEPTH = Number(get("depth", "3"));
 var TIME_MS = Number(get("time", "60000"));
 var MODEL = get("model", "data/model.onnx");
 var MAX_PLY2 = Number(get("max-ply", "160"));
-function playGame(nn, newPlaysRed, depth, timeMs) {
+var OPENING_PLIES = Number(get("opening", "4"));
+function playGame(nn, newPlaysRed, depth, timeMs, openingPlies, rng2) {
   const board = new Board();
   const rep = /* @__PURE__ */ new Map();
   const evalFn = (b) => nn.evalBoard(b);
+  for (let i = 0; i < openingPlies; i++) {
+    const legal = generateLegalMoves(board, board.turn);
+    if (legal.length === 0) break;
+    board.makeMove(legal[Math.floor(rng2() * legal.length)]);
+  }
   for (let ply = 0; ply < MAX_PLY2; ply++) {
     const legal = generateLegalMoves(board, board.turn);
     if (legal.length === 0) {
@@ -1295,15 +1301,20 @@ function eloDelta(scoreRate) {
 }
 async function main() {
   console.log(`[match] \u65B0\u5F15\u64CE=NNUE\u84B8\u998F\u6A21\u578B(${MODEL})  \u65E7\u5F15\u64CE=\u5B50\u529B+PST`);
-  console.log(`[match] ${GAMES} \u5C40  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY2}`);
+  console.log(`[match] ${GAMES} \u5C40  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY2}  opening=${OPENING_PLIES}\u968F\u673A\u6B65`);
   const nn = new NnueEvaluator(MODEL);
+  let seed = Number(get("seed", "20260928"));
+  const rng2 = () => {
+    seed = seed * 1103515245 + 12345 & 2147483647;
+    return seed / 2147483647;
+  };
   let score = 0;
   let newWins = 0, oldWins = 0, draws = 0;
   const t0 = Date.now();
   for (let g = 0; g < GAMES; g++) {
     const newPlaysRed = g % 2 === 0;
     const t1 = Date.now();
-    const res = playGame(nn, newPlaysRed, DEPTH, TIME_MS);
+    const res = playGame(nn, newPlaysRed, DEPTH, TIME_MS, OPENING_PLIES, rng2);
     const dt = ((Date.now() - t1) / 1e3).toFixed(0);
     if (res === "new") {
       score += 1;

@@ -25,14 +25,22 @@ const DEPTH = Number(get('depth', '3'));
 const TIME_MS = Number(get('time', '60000'));
 const MODEL = get('model', 'data/model.onnx');
 const MAX_PLY = Number(get('max-ply', '160'));
+const OPENING_PLIES = Number(get('opening', '4'));
 
 type Outcome = 'new' | 'old' | 'draw';
 
-/** 一局：newPlaysRed 指定新引擎执红还是黑 */
-function playGame(nn: NnueEvaluator, newPlaysRed: boolean, depth: number, timeMs: number): Outcome {
+/** 一局：newPlaysRed 指定新引擎执红还是黑；openingPlies 先随机走 N 步制造开局差异 */
+function playGame(nn: NnueEvaluator, newPlaysRed: boolean, depth: number, timeMs: number, openingPlies: number, rng: () => number): Outcome {
   const board = new Board();
   const rep = new Map<string, number>();
   const evalFn = (b: typeof board) => nn.evalBoard(b);
+
+  // 开局随机扰动：双方引擎接管前随机走几步（只走合法着，避开直接送将由合法性保证）
+  for (let i = 0; i < openingPlies; i++) {
+    const legal = generateLegalMoves(board, board.turn);
+    if (legal.length === 0) break;
+    board.makeMove(legal[Math.floor(rng() * legal.length)]!);
+  }
 
   for (let ply = 0; ply < MAX_PLY; ply++) {
     const legal = generateLegalMoves(board, board.turn);
@@ -63,8 +71,14 @@ function eloDelta(scoreRate: number): number {
 
 async function main() {
   console.log(`[match] 新引擎=NNUE蒸馏模型(${MODEL})  旧引擎=子力+PST`);
-  console.log(`[match] ${GAMES} 局  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY}`);
+  console.log(`[match] ${GAMES} 局  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY}  opening=${OPENING_PLIES}随机步`);
   const nn = new NnueEvaluator(MODEL);
+  // 可复现随机源（--seed 可改）
+  let seed = Number(get('seed', '20260928'));
+  const rng = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
 
   let score = 0; // 新引擎得分（胜1平0.5负0）
   let newWins = 0, oldWins = 0, draws = 0;
@@ -73,7 +87,7 @@ async function main() {
   for (let g = 0; g < GAMES; g++) {
     const newPlaysRed = g % 2 === 0;
     const t1 = Date.now();
-    const res = playGame(nn, newPlaysRed, DEPTH, TIME_MS);
+    const res = playGame(nn, newPlaysRed, DEPTH, TIME_MS, OPENING_PLIES, rng);
     const dt = ((Date.now() - t1) / 1000).toFixed(0);
     if (res === 'new') { score += 1; newWins++; }
     else if (res === 'draw') { score += 0.5; draws++; }
