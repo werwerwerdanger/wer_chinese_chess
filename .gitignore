@@ -8,6 +8,7 @@ dist/
 tools/pikafish/dist/
 tools/pikafish/*.7z
 
-# 蒸馏数据（大文件不入库）
+# 蒸馏数据（大文件不入库，压缩包白名单）
 data/*
 !data/positions.txt.gz
+!data/labeled.txt.gz
