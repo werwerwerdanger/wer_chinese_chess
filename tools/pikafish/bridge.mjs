@@ -113,6 +113,7 @@ class UciEngine {
 
     const deadline = Date.now() + 120000;
     while (Date.now() < deadline) {
+      if (!this.alive) throw new Error('engine died on this position (illegal FEN?)');
       const line = this.lines.find((l) => l.startsWith('bestmove '));
       if (line) {
         const move = line.split(/\s+/)[1] ?? '';
