@@ -27,6 +27,7 @@ class UciEngine {
   start() {
     this.proc = spawn(EXE, [], { cwd: CWD, stdio: ['pipe', 'pipe', 'pipe'] });
     this.lines = [];
+    this.recent = []; // 黑匣子：引擎最近输出的行，退出时倒出来
     this.proc.stdout.setEncoding('utf8');
     this.pending = '';
     this.proc.stdout.on('data', (chunk) => {
@@ -35,15 +36,22 @@ class UciEngine {
       this.pending = parts.pop() ?? ''; // 最后一段可能是不完整行，留到下个 chunk
       for (const line of parts) {
         const t = line.trim();
-        if (t) this.lines.push(t);
+        if (t) {
+          this.lines.push(t);
+          this.recent.push(t);
+          if (this.recent.length > 40) this.recent.shift();
+        }
       }
     });
-    // 引擎 stderr 不再丢弃：原样打到 bridge 控制台，崩溃时能看到真实原因
+    this.proc.on('error', (e) => console.error(`[bridge] pikafish spawn error: ${e.message}`));
+    // 引擎 stderr 原样打到 bridge 控制台
     this.proc.stderr.setEncoding('utf8');
     this.proc.stderr.on('data', (c) => process.stderr.write('[pikafish:err] ' + c));
+    // 引擎退出时倒出黑匣子，看它临死前最后的输出
     this.proc.on('exit', (code) => {
       this.alive = false;
-      console.error(`[bridge] pikafish exited: ${code}，3 秒后自动重启…`);
+      const tail = this.recent.slice(-15).map((l) => `    ${l}`).join('\n');
+      console.error(`[bridge] pikafish exited: ${code}\n[bridge] 最后输出:\n${tail || '    (无输出)'}`);
       setTimeout(() => this.restart(), 3000);
     });
     this.alive = true;
