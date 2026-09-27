@@ -17,10 +17,15 @@ const EXE = path.join(__dirname, 'dist', 'Pikafish-Windows-x86-64-universal.exe'
 const CWD = path.join(__dirname, 'dist');
 const PORT = 8788;
 
-/** 常驻 UCI 引擎进程，请求串行处理（象棋思考天然互斥） */
+/** 常驻 UCI 引擎进程，请求串行处理（象棋思考天然互斥）；崩溃自动重启 */
 class UciEngine {
   constructor() {
-    this.proc = spawn(EXE, [], { cwd: CWD, stdio: ['pipe', 'pipe', 'ignore'] });
+    this.alive = false;
+    this.start();
+  }
+
+  start() {
+    this.proc = spawn(EXE, [], { cwd: CWD, stdio: ['pipe', 'pipe', 'pipe'] });
     this.lines = [];
     this.proc.stdout.setEncoding('utf8');
     this.pending = '';
@@ -33,11 +38,35 @@ class UciEngine {
         if (t) this.lines.push(t);
       }
     });
-    this.proc.on('exit', (code) => console.error(`[bridge] pikafish exited: ${code}`));
+    // 引擎 stderr 不再丢弃：原样打到 bridge 控制台，崩溃时能看到真实原因
+    this.proc.stderr.setEncoding('utf8');
+    this.proc.stderr.on('data', (c) => process.stderr.write('[pikafish:err] ' + c));
+    this.proc.on('exit', (code) => {
+      this.alive = false;
+      console.error(`[bridge] pikafish exited: ${code}，3 秒后自动重启…`);
+      setTimeout(() => this.restart(), 3000);
+    });
+    this.alive = true;
+  }
+
+  async restart() {
+    try {
+      this.start();
+      await this.ready();
+      console.error('[bridge] pikafish 重启完成，恢复服务');
+    } catch (err) {
+      console.error(`[bridge] pikafish 重启失败: ${err.message}，5 秒后再试`);
+      setTimeout(() => this.restart(), 5000);
+    }
   }
 
   send(cmd) {
-    this.proc.stdin.write(cmd + '\n');
+    if (!this.alive) throw new Error('engine down, restarting');
+    try {
+      this.proc.stdin.write(cmd + '\n');
+    } catch {
+      throw new Error('engine stdin broken, restarting');
+    }
   }
 
   /** 等待匹配谓词的行出现，返回该行（不消费其他行） */
@@ -102,6 +131,14 @@ const engine = new UciEngine();
 await engine.ready();
 console.log('[bridge] pikafish ready');
 
+/** 串行队列：同一时刻只允许一个请求驱动引擎，防止 UCI 命令流交错 */
+let chain = Promise.resolve();
+const enqueue = (fn) => {
+  const p = chain.then(fn);
+  chain = p.catch(() => {});
+  return p;
+};
+
 http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -121,7 +158,7 @@ http.createServer(async (req, res) => {
       try {
         const { fen, depth } = JSON.parse(body);
         if (!fen || !Number.isFinite(depth)) throw new Error('bad request');
-        const r = await engine.think(fen, Math.min(Math.max(1, depth | 0), 20));
+        const r = await enqueue(() => engine.think(fen, Math.min(Math.max(1, depth | 0), 20)));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(r));
       } catch (err) {
@@ -142,15 +179,18 @@ http.createServer(async (req, res) => {
         const { fens, depth } = JSON.parse(body);
         if (!Array.isArray(fens) || fens.length === 0) throw new Error('bad request');
         const d = Math.min(Math.max(1, (depth | 0) || 14), 20);
-        const results = [];
-        for (const fen of fens) {
-          try {
-            const r = await engine.think(fen, d);
-            results.push({ fen, ...r });
-          } catch (err) {
-            results.push({ fen, error: String(err.message ?? err) });
+        const results = await enqueue(async () => {
+          const out = [];
+          for (const fen of fens) {
+            try {
+              const r = await engine.think(fen, d);
+              out.push({ fen, ...r });
+            } catch (err) {
+              out.push({ fen, error: String(err.message ?? err) });
+            }
           }
-        }
+          return out;
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ results }));
       } catch (err) {
