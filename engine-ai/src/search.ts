@@ -32,6 +32,9 @@ interface TTEntry {
   bestMove: Move;
 }
 
+/** 自定义评估器：返回红方视角 cp（与 evaluate 同约定），用于替换内置评估 */
+export type EvalFn = (board: import('@wer-chess/engine').Board) => number;
+
 export class Searcher {
   private readonly board: Board;
   private readonly tt = new Map<bigint, TTEntry>();
@@ -42,9 +45,13 @@ export class Searcher {
   /** 搜索中检出（当前走子方被将死/困毙）时由 makeMove 感知 */
   private searchAborted = false;
 
-  constructor(board: Board, ttMax = 1 << 18) {
+  /** 评估函数（默认子力+PST；可注入 NNUE 等），红方视角 cp */
+  private readonly evalFn: EvalFn;
+
+  constructor(board: Board, ttMax = 1 << 18, evalFn?: EvalFn) {
     this.board = board;
     this.ttMax = ttMax;
+    this.evalFn = evalFn ?? evaluate;
   }
 
   /** 清空置换表（新对局/悔棋后调用，防止跨局面污染） */
@@ -216,7 +223,7 @@ export class Searcher {
     deadlineHit: () => boolean,
   ): number {
     this.nodes++;
-    const standPat = sign * evaluate(this.board);
+    const standPat = sign * this.evalFn(this.board);
     if (qdepth <= 0 || (this.nodes & 1023) === 0 && deadlineHit()) {
       this.searchAborted = this.searchAborted || (this.nodes & 1023) === 0 && deadlineHit();
       return standPat;

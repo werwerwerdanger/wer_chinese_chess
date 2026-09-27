@@ -12,7 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@wer-chess/engine": "*"
+    "@wer-chess/engine": "*",
+    "onnxruntime-node": "^1.30.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
