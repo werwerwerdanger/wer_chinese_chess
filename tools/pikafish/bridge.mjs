@@ -59,15 +59,16 @@ class UciEngine {
       console.error(`[eng${this.id}] pikafish exited: ${code}\n[eng${this.id}] 最后输出:\n${tail || '    (无输出)'}`);
       setTimeout(() => this.restart(), 3000);
     });
+    this.alive = true; // spawn 成功即视为可用；exit 事件再置 false
   }
 
   async restart() {
     try {
       this.start();
       await this.ready();
-      this.alive = true;
       console.error(`[eng${this.id}] pikafish 重启完成，恢复服务`);
     } catch (err) {
+      this.alive = false;
       console.error(`[eng${this.id}] 重启失败: ${err.message}，5 秒后再试`);
       setTimeout(() => this.restart(), 5000);
     }
@@ -106,7 +107,6 @@ class UciEngine {
 
   async init() {
     await this.ready();
-    this.alive = true;
   }
 
   /** 等本实例重启完成（供毒局面崩掉后的重试用） */
