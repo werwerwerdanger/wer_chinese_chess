@@ -12,3 +12,5 @@ tools/pikafish/*.7z
 data/*
 !data/positions.txt.gz
 !data/labeled.txt.gz
+!data/model.onnx
+!data/model.pt

@@ -33,13 +33,29 @@ def encode_fen(fen: str):
             x[(r * 9 + c) * 14 + pi] = 1.0
             c += 1
         assert c == 9, f"row width {c} != 9 in {fen}"
-    side = 1.0 if fen.split(" ")[1] == "r" else 0.0
+    side = 1.0 if fen.split(" ")[1] == "w" else 0.0  # 引擎 FEN 用 w/b 表示红/黑
     x[-1] = side
     return x
 
 
-def load_dataset(path: str):
-    """labeled.txt → (X, y)。教师分 tanh(score/1000) 压缩。"""
+def mirror_fen(fen: str) -> str:
+    """颜色镜像：上下翻转棋盘 + 红黑棋子互换 + 行棋方互换。红方视角分数取反。"""
+    parts = fen.split(" ")
+    rows = parts[0].split("/")[::-1]
+    flipped = []
+    for row in rows:
+        out = ""
+        for ch in row:
+            out += ch if ch.isdigit() else ch.swapcase()
+        flipped.append(out)
+    side = "b" if parts[1] == "w" else "w"  # 引擎 FEN 用 w/b
+    return "/".join(flipped) + " " + side
+
+
+def load_dataset(path: str, augment: bool = True):
+    """labeled.txt → (X, y)。教师分 tanh(score/1000) 压缩。
+    augment=True 时每个局面附加颜色镜像副本（标签取反），
+    强制 f(mirror)=-f(原) 对称性，消除红黑不对称偏差。"""
     import numpy as np
 
     xs, ys = [], []
@@ -49,8 +65,13 @@ def load_dataset(path: str):
             if not line or ";" not in line:
                 continue
             fen, s = line.rsplit(";", 1)
-            xs.append(encode_fen(fen.strip()))
-            ys.append(math.tanh(float(s) / 1000.0))
+            fen = fen.strip()
+            y = math.tanh(float(s) / 1000.0)
+            xs.append(encode_fen(fen))
+            ys.append(y)
+            if augment:
+                xs.append(encode_fen(mirror_fen(fen)))
+                ys.append(-y)
     X = np.stack(xs)
     y = np.array(ys, dtype=np.float32)
     return X, y
@@ -79,6 +100,7 @@ def main():
     ap.add_argument("--batch", type=int, default=4096)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--val-frac", type=float, default=0.02)
+    ap.add_argument("--no-augment", action="store_true", help="关闭颜色镜像增广")
     args = ap.parse_args()
 
     import torch
@@ -88,8 +110,8 @@ def main():
     print(f"[train] device = {device}")
 
     print(f"[train] 读取 {args.data} ...")
-    X, y = load_dataset(args.data)
-    print(f"[train] 样本 {len(X)}")
+    X, y = load_dataset(args.data, augment=not args.no_augment)
+    print(f"[train] 样本 {len(X)}{'（含颜色镜像增广）' if not args.no_augment else ''}")
 
     # 随机划分 train/val（v1 按行分，足够）
     idx = list(range(len(X)))
