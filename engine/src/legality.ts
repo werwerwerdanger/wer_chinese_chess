@@ -62,10 +62,11 @@ export function inCheck(board: Board, side: Color): boolean {
   // 马从 (mr,mc) 跳到将 (kr,kc)：蹩腿位是马旁边、与将相邻方向的格子
   const horseDeltas: ReadonlyArray<readonly [number, number, number, number]> = [
     // [mr-kr, mc-kc, legDr, legDc] leg 相对将位
-    [-2, -1, -1, 0], [-2, 1, -1, 0],
-    [2, -1, 1, 0], [2, 1, 1, 0],
-    [-1, -2, 0, -1], [1, -2, 0, -1],
-    [-1, 2, 0, 1], [1, 2, 0, 1],
+    // 腿在马旁边、沿长轴方向一格：竖直长跳(|dr|=2)时 leg=(dr/2, dc)，横向长跳(|dc|=2)时 leg=(dr, dc/2)
+    [-2, -1, -1, -1], [-2, 1, -1, 1],
+    [2, -1, 1, -1], [2, 1, 1, 1],
+    [-1, -2, -1, -1], [1, -2, 1, -1],
+    [-1, 2, -1, 1], [1, 2, 1, 1],
   ];
   for (const [dr, dc, lr, lc] of horseDeltas) {
     const mr = kr + dr, mc = kc + dc;
