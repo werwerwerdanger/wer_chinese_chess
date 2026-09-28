@@ -1,16 +1,19 @@
 /**
- * 新旧引擎对打 —— 报告 Elo 素材
+ * 引擎对打 —— 报告 Elo 素材
  *
- * 旧引擎：Searcher 默认评估（子力+PST）
- * 新引擎：Searcher + NnueEvaluator（蒸馏 ONNX）
- * 双方同深度/同时间，轮流执红黑，三重复现判和，160 步封顶判和。
+ * 学生引擎：Searcher + NnueEvaluator（蒸馏 ONNX）
+ * 对手（--opp）：
+ *   old      —— Searcher 默认评估（子力+PST），默认，用于量化蒸馏模型相对旧引擎的提升
+ *   pikafish —— Pikafish 经桥接（tools/pikafish/bridge.mjs :8788），教师基线
+ * 双方同深度，轮流执红黑，三重复现判和，160 步封顶判和。
  *
  * 用法（esbuild 打包后 node 运行）：
- *   node tools/distill/match.mjs --games 20 --depth 3 --model data/model.onnx
+ *   node tools/distill/match.mjs --games 20 --depth 3 --model data/model.onnx [--opp pikafish]
  *
- * 输出：逐局结果 + 新引擎得分率 + Elo 差
+ * 输出：逐局结果 + 学生得分率 + Elo 差
  */
 import { Board, generateLegalMoves } from '@wer-chess/engine';
+import type { Move } from '@wer-chess/engine';
 import { Searcher } from '@wer-chess/engine-ai';
 import { NnueEvaluator } from '../../engine-ai/src/nnue';
 
@@ -26,16 +29,61 @@ const TIME_MS = Number(get('time', '60000'));
 const MODEL = get('model', 'data/model.onnx');
 const MAX_PLY = Number(get('max-ply', '160'));
 const OPENING_PLIES = Number(get('opening', '4'));
+const OPP = get('opp', 'old'); // old | pikafish
+const BRIDGE = get('bridge', 'http://127.0.0.1:8788');
 
-type Outcome = 'new' | 'old' | 'draw';
+interface Player {
+  name: string;
+  move(b: Board, depth: number, timeMs: number): Promise<Move | null>;
+}
 
-/** 一局：newPlaysRed 指定新引擎执红还是黑；openingPlies 先随机走 N 步制造开局差异 */
-function playGame(nn: NnueEvaluator, newPlaysRed: boolean, depth: number, timeMs: number, openingPlies: number, rng: () => number): Outcome {
+/** 本地搜索玩家；evalFn 传入则用 NNUE，否则用内置子力+PST */
+function searchPlayer(name: string, evalFn?: (b: Board) => number): Player {
+  return {
+    name,
+    async move(b, depth, timeMs) {
+      const s = new Searcher(b, 1 << 17, evalFn);
+      const r = s.search(depth, timeMs);
+      return r.bestMove ?? null;
+    },
+  };
+}
+
+/** UCI "h2e2" → 引擎 Move（row = 9 - rank, col = file - 'a'），非法返回 null */
+function uciToMove(b: Board, u: string): Move | null {
+  if (!/^[a-i][0-9][a-i][0-9]$/.test(u)) return null;
+  const from = (9 - Number(u[1])) * 9 + (u.charCodeAt(0) - 97);
+  const to = (9 - Number(u[3])) * 9 + (u.charCodeAt(2) - 97);
+  return generateLegalMoves(b, b.turn).find((m) => m.from === from && m.to === to) ?? null;
+}
+
+/** Pikafish 玩家：经桥接 /think */
+function pikafishPlayer(): Player {
+  return {
+    name: `Pikafish(${BRIDGE})`,
+    async move(b, depth) {
+      const resp = await fetch(`${BRIDGE}/think`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fen: b.toFen(), depth }),
+      });
+      const r = (await resp.json()) as { move?: string; error?: string };
+      if (!resp.ok || !r.move) throw new Error(r.error ?? `bridge HTTP ${resp.status}`);
+      return uciToMove(b, r.move);
+    },
+  };
+}
+
+type Outcome = 'red' | 'black' | 'draw';
+
+/** 一局：红黑玩家对决；openingPlies 先随机走 N 步制造开局差异 */
+async function playGame(
+  red: Player, black: Player,
+  depth: number, timeMs: number, openingPlies: number, rng: () => number,
+): Promise<Outcome> {
   const board = new Board();
   const rep = new Map<string, number>();
-  const evalFn = (b: typeof board) => nn.evalBoard(b);
 
-  // 开局随机扰动：双方引擎接管前随机走几步（只走合法着，避开直接送将由合法性保证）
   for (let i = 0; i < openingPlies; i++) {
     const legal = generateLegalMoves(board, board.turn);
     if (legal.length === 0) break;
@@ -46,20 +94,19 @@ function playGame(nn: NnueEvaluator, newPlaysRed: boolean, depth: number, timeMs
     const legal = generateLegalMoves(board, board.turn);
     if (legal.length === 0) {
       // 无合法走子 = 当前方负（将死或困毙，象棋规则困毙也判负）
-      return board.turn === (newPlaysRed ? 0 : 1) ? 'old' : 'new';
+      return board.turn === 0 ? 'black' : 'red';
     }
     const fen = board.toFen();
     const cnt = (rep.get(fen) ?? 0) + 1;
     rep.set(fen, cnt);
     if (cnt >= 3) return 'draw'; // 三重复现
 
-    const newToMove = (board.turn === 0) === newPlaysRed;
-    const s = new Searcher(board, 1 << 17, newToMove ? evalFn : undefined);
-    const r = s.search(depth, timeMs);
-    if (!r.bestMove) {
-      return newToMove ? 'old' : 'new';
+    const cur = board.turn === 0 ? red : black;
+    const mv = await cur.move(board, depth, timeMs);
+    if (!mv) {
+      return board.turn === 0 ? 'black' : 'red';
     }
-    board.makeMove(r.bestMove);
+    board.makeMove(mv);
   }
   return 'draw';
 }
@@ -70,9 +117,13 @@ function eloDelta(scoreRate: number): number {
 }
 
 async function main() {
-  console.log(`[match] 新引擎=NNUE蒸馏模型(${MODEL})  旧引擎=子力+PST`);
-  console.log(`[match] ${GAMES} 局  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY}  opening=${OPENING_PLIES}随机步`);
   const nn = new NnueEvaluator(MODEL);
+  const student = searchPlayer(`NNUE蒸馏(${MODEL})`, (b) => nn.evalBoard(b));
+  const opp = OPP === 'pikafish' ? pikafishPlayer() : searchPlayer('子力+PST');
+
+  console.log(`[match] 学生=${student.name}  对手=${opp.name}`);
+  console.log(`[match] ${GAMES} 局  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY}  opening=${OPENING_PLIES}随机步`);
+
   // 可复现随机源（--seed 可改）
   let seed = Number(get('seed', '20260928'));
   const rng = () => {
@@ -80,27 +131,39 @@ async function main() {
     return seed / 0x7fffffff;
   };
 
-  let score = 0; // 新引擎得分（胜1平0.5负0）
-  let newWins = 0, oldWins = 0, draws = 0;
+  let score = 0; // 学生得分（胜1平0.5负0）
+  let stuWins = 0, oppWins = 0, draws = 0;
   const t0 = Date.now();
 
   for (let g = 0; g < GAMES; g++) {
-    const newPlaysRed = g % 2 === 0;
+    const studentPlaysRed = g % 2 === 0;
     const t1 = Date.now();
-    const res = playGame(nn, newPlaysRed, DEPTH, TIME_MS, OPENING_PLIES, rng);
+    let res: Outcome;
+    try {
+      res = await playGame(
+        studentPlaysRed ? student : opp,
+        studentPlaysRed ? opp : student,
+        DEPTH, TIME_MS, OPENING_PLIES, rng,
+      );
+    } catch (err) {
+      console.error(`[match] 局 ${g + 1} 异常: ${(err as Error).message}`);
+      oppWins++;
+      continue;
+    }
     const dt = ((Date.now() - t1) / 1000).toFixed(0);
-    if (res === 'new') { score += 1; newWins++; }
-    else if (res === 'draw') { score += 0.5; draws++; }
-    else oldWins++;
-    const plies = newPlaysRed ? '新执红' : '新执黑';
-    console.log(`[match] 局 ${g + 1}/${GAMES}  ${res === 'draw' ? '和' : res + '胜'}  (${plies}, ${dt}s)  ` +
-      `累计 新${newWins} 和${draws} 旧${oldWins}  nn评估次数=${nn.callCount}`);
+    const stuRes = res === 'draw' ? 'draw' : (res === 'red') === studentPlaysRed ? 'new' : 'old';
+    if (stuRes === 'new') { score += 1; stuWins++; }
+    else if (stuRes === 'draw') { score += 0.5; draws++; }
+    else oppWins++;
+    const plies = studentPlaysRed ? '学生执红' : '学生执黑';
+    console.log(`[match] 局 ${g + 1}/${GAMES}  ${res === 'draw' ? '和' : stuRes + '胜'}  (${plies}, ${dt}s)  ` +
+      `累计 学生${stuWins} 和${draws} 对手${oppWins}  nn评估次数=${nn.callCount}`);
   }
 
   const rate = score / GAMES;
   console.log('='.repeat(60));
-  console.log(`[match] 结果: 新引擎 ${newWins} 胜 / ${draws} 和 / ${oldWins} 负  得分率 ${rate.toFixed(3)}`);
-  console.log(`[match] Elo 差（新-旧）: ${eloDelta(rate)}  总耗时 ${((Date.now() - t0) / 60000).toFixed(1)} 分钟`);
+  console.log(`[match] 结果: 学生 ${stuWins} 胜 / ${draws} 和 / ${oppWins} 负  得分率 ${rate.toFixed(3)}`);
+  console.log(`[match] Elo 差（学生-${OPP}）: ${eloDelta(rate)}  总耗时 ${((Date.now() - t0) / 60000).toFixed(1)} 分钟`);
   console.log(`[match] NN 评估总次数 ${nn.callCount}（含缓存命中前）`);
   nn.dispose();
 }

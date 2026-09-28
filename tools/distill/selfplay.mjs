@@ -1,3 +1,6 @@
+// tools/distill/selfplay.ts
+import { appendFileSync, writeFileSync } from "node:fs";
+
 // engine/src/constants.ts
 var BOARD_COLS = 9;
 var BOARD_ROWS = 10;
@@ -1255,29 +1258,28 @@ var NnueEvaluator = class _NnueEvaluator {
   }
 };
 
-// tools/distill/match.ts
+// tools/distill/selfplay.ts
 var argv = process.argv.slice(2);
 var get = (k, d) => {
   const i = argv.indexOf(`--${k}`);
   return i >= 0 && argv[i + 1] !== void 0 ? argv[i + 1] : d;
 };
-var GAMES = Number(get("games", "20"));
-var DEPTH = Number(get("depth", "3"));
-var TIME_MS = Number(get("time", "60000"));
-var MODEL = get("model", "data/model.onnx");
+var GAMES = Number(get("games", "300"));
+var DEPTH = Number(get("depth", "12"));
+var OPENING_PLIES = Number(get("opening", "6"));
 var MAX_PLY2 = Number(get("max-ply", "160"));
-var OPENING_PLIES = Number(get("opening", "4"));
-var OPP = get("opp", "old");
+var OUT = get("out", "data/labeled-selfplay.txt");
+var MODE = get("mode", "pp");
 var BRIDGE = get("bridge", "http://127.0.0.1:8788");
-function searchPlayer(name, evalFn) {
-  return {
-    name,
-    async move(b, depth, timeMs) {
-      const s = new Searcher(b, 1 << 17, evalFn);
-      const r = s.search(depth, timeMs);
-      return r.bestMove ?? null;
-    }
-  };
+var MODEL = get("model", "data/model.onnx");
+var PARALLEL = Math.max(1, Number(get("parallel", "8")));
+var LABEL_ALL = get("label-all", MODE === "sp" ? "true" : "false") === "true";
+var SEED = Number(get("seed", "20260928"));
+function toRedView(fen, scoreCp, mate) {
+  const black = fen.split(" ")[1] === "b";
+  if (mate !== null && mate !== void 0) return black ? -mate * 1e4 : mate * 1e4;
+  const cp = scoreCp ?? 0;
+  return black ? -cp : cp;
 }
 function uciToMove(b, u) {
   if (!/^[a-i][0-9][a-i][0-9]$/.test(u)) return null;
@@ -1285,100 +1287,123 @@ function uciToMove(b, u) {
   const to = (9 - Number(u[3])) * 9 + (u.charCodeAt(2) - 97);
   return generateLegalMoves(b, b.turn).find((m) => m.from === from && m.to === to) ?? null;
 }
-function pikafishPlayer() {
-  return {
-    name: `Pikafish(${BRIDGE})`,
-    async move(b, depth) {
-      const resp = await fetch(`${BRIDGE}/think`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fen: b.toFen(), depth })
-      });
-      const r = await resp.json();
-      if (!resp.ok || !r.move) throw new Error(r.error ?? `bridge HTTP ${resp.status}`);
-      return uciToMove(b, r.move);
-    }
-  };
+async function pikafish(fen, depth) {
+  const resp = await fetch(`${BRIDGE}/think`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fen, depth })
+  });
+  const r = await resp.json();
+  if (!resp.ok) throw new Error(r.error ?? `bridge HTTP ${resp.status}`);
+  return { move: r.move ?? null, label: r.move ? toRedView(fen, r.scoreCp ?? null, r.mate ?? null) : null };
 }
-async function playGame(red, black, depth, timeMs, openingPlies, rng2) {
+var nn = MODE === "sp" ? new NnueEvaluator(MODEL) : null;
+var seen = /* @__PURE__ */ new Set();
+var buf = [];
+var labels = 0;
+var doneGames = 0;
+var draws = 0;
+var aborted = 0;
+var t0 = Date.now();
+function addLabel(fen, label) {
+  if (label === null || seen.has(fen)) return;
+  seen.add(fen);
+  buf.push(`${fen} ; ${label}
+`);
+  labels++;
+}
+function flush() {
+  if (buf.length === 0) return;
+  appendFileSync(OUT, buf.join(""));
+  buf.length = 0;
+}
+async function playOneGame(g) {
+  const studentRed = g % 2 === 0;
+  let seed = SEED + g * 7919 >>> 0;
+  const rng2 = () => {
+    seed = seed * 1103515245 + 12345 & 2147483647;
+    return seed / 2147483647;
+  };
   const board = new Board();
   const rep = /* @__PURE__ */ new Map();
-  for (let i = 0; i < openingPlies; i++) {
+  for (let i = 0; i < OPENING_PLIES; i++) {
     const legal = generateLegalMoves(board, board.turn);
     if (legal.length === 0) break;
     board.makeMove(legal[Math.floor(rng2() * legal.length)]);
   }
   for (let ply = 0; ply < MAX_PLY2; ply++) {
     const legal = generateLegalMoves(board, board.turn);
-    if (legal.length === 0) {
-      return board.turn === 0 ? "black" : "red";
-    }
+    if (legal.length === 0) return;
     const fen = board.toFen();
     const cnt = (rep.get(fen) ?? 0) + 1;
     rep.set(fen, cnt);
-    if (cnt >= 3) return "draw";
-    const cur = board.turn === 0 ? red : black;
-    const mv = await cur.move(board, depth, timeMs);
-    if (!mv) {
-      return board.turn === 0 ? "black" : "red";
+    if (cnt >= 3) {
+      draws++;
+      return;
     }
-    board.makeMove(mv);
-  }
-  return "draw";
-}
-function eloDelta(scoreRate) {
-  const w = Math.min(0.99, Math.max(0.01, scoreRate));
-  return Math.round(-400 * Math.log10(1 / w - 1));
-}
-async function main() {
-  const nn = new NnueEvaluator(MODEL);
-  const student = searchPlayer(`NNUE\u84B8\u998F(${MODEL})`, (b) => nn.evalBoard(b));
-  const opp = OPP === "pikafish" ? pikafishPlayer() : searchPlayer("\u5B50\u529B+PST");
-  console.log(`[match] \u5B66\u751F=${student.name}  \u5BF9\u624B=${opp.name}`);
-  console.log(`[match] ${GAMES} \u5C40  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY2}  opening=${OPENING_PLIES}\u968F\u673A\u6B65`);
-  let seed = Number(get("seed", "20260928"));
-  const rng2 = () => {
-    seed = seed * 1103515245 + 12345 & 2147483647;
-    return seed / 2147483647;
-  };
-  let score = 0;
-  let stuWins = 0, oppWins = 0, draws = 0;
-  const t0 = Date.now();
-  for (let g = 0; g < GAMES; g++) {
-    const studentPlaysRed = g % 2 === 0;
-    const t1 = Date.now();
-    let res;
-    try {
-      res = await playGame(
-        studentPlaysRed ? student : opp,
-        studentPlaysRed ? opp : student,
-        DEPTH,
-        TIME_MS,
-        OPENING_PLIES,
-        rng2
-      );
-    } catch (err) {
-      console.error(`[match] \u5C40 ${g + 1} \u5F02\u5E38: ${err.message}`);
-      oppWins++;
+    const studentToMove = MODE === "sp" && board.turn === 0 === studentRed;
+    if (studentToMove) {
+      if (LABEL_ALL) {
+        try {
+          const r2 = await pikafish(fen, DEPTH);
+          addLabel(fen, r2.label);
+        } catch {
+        }
+      }
+      const mv2 = studentMove(board);
+      if (!mv2) return;
+      board.makeMove(mv2);
       continue;
     }
-    const dt = ((Date.now() - t1) / 1e3).toFixed(0);
-    const stuRes = res === "draw" ? "draw" : res === "red" === studentPlaysRed ? "new" : "old";
-    if (stuRes === "new") {
-      score += 1;
-      stuWins++;
-    } else if (stuRes === "draw") {
-      score += 0.5;
-      draws++;
-    } else oppWins++;
-    const plies = studentPlaysRed ? "\u5B66\u751F\u6267\u7EA2" : "\u5B66\u751F\u6267\u9ED1";
-    console.log(`[match] \u5C40 ${g + 1}/${GAMES}  ${res === "draw" ? "\u548C" : stuRes + "\u80DC"}  (${plies}, ${dt}s)  \u7D2F\u8BA1 \u5B66\u751F${stuWins} \u548C${draws} \u5BF9\u624B${oppWins}  nn\u8BC4\u4F30\u6B21\u6570=${nn.callCount}`);
+    let r;
+    try {
+      r = await pikafish(fen, DEPTH);
+    } catch (err) {
+      throw err;
+    }
+    addLabel(fen, r.label);
+    const mv = r.move ? uciToMove(board, r.move) : null;
+    if (!mv) return;
+    board.makeMove(mv);
   }
-  const rate = score / GAMES;
+}
+function studentMove(b) {
+  const s = new Searcher(b, 1 << 17, (bb) => nn.evalBoard(bb));
+  const r = s.search(2, 2e3);
+  return r.bestMove ?? null;
+}
+async function worker(w) {
+  for (let g = w; g < GAMES; g += PARALLEL) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await playOneGame(g);
+        break;
+      } catch (err) {
+        if (attempt === 2) {
+          aborted++;
+          console.error(`[selfplay] \u5C40 ${g + 1} \u4E09\u6B21\u5931\u8D25\u653E\u5F03: ${err.message}`);
+        } else {
+          await new Promise((res) => setTimeout(res, 3e3));
+        }
+      }
+    }
+    doneGames++;
+    flush();
+    if (doneGames % 25 === 0 || doneGames === GAMES) {
+      const dt = (Date.now() - t0) / 1e3;
+      const eta = dt / doneGames * (GAMES - doneGames);
+      console.log(`[selfplay] \u5C40 ${doneGames}/${GAMES}  \u6807\u7B7E ${labels} \u6761  \u548C\u5C40 ${draws}  ${(dt / 60).toFixed(1)} \u5206\u949F  ${(dt / doneGames).toFixed(1)}s/\u5C40  \u5269\u4F59\u7EA6 ${(eta / 60).toFixed(0)} \u5206\u949F`);
+    }
+  }
+}
+async function main() {
+  writeFileSync(OUT, "");
+  console.log(`[selfplay] \u6A21\u5F0F=${MODE === "pp" ? "Pikafish vs Pikafish" : "\u5B66\u751FNNUE vs Pikafish"}  ${GAMES} \u5C40 \xD7 ${PARALLEL} \u5E76\u53D1  depth=${DEPTH}  opening=${OPENING_PLIES}\u968F\u673A\u6B65  labelAll=${LABEL_ALL}  \u2192 ${OUT}`);
+  await Promise.all(Array.from({ length: PARALLEL }, (_, w) => worker(w)));
+  flush();
+  const dt = (Date.now() - t0) / 6e4;
   console.log("=".repeat(60));
-  console.log(`[match] \u7ED3\u679C: \u5B66\u751F ${stuWins} \u80DC / ${draws} \u548C / ${oppWins} \u8D1F  \u5F97\u5206\u7387 ${rate.toFixed(3)}`);
-  console.log(`[match] Elo \u5DEE\uFF08\u5B66\u751F-${OPP}\uFF09: ${eloDelta(rate)}  \u603B\u8017\u65F6 ${((Date.now() - t0) / 6e4).toFixed(1)} \u5206\u949F`);
-  console.log(`[match] NN \u8BC4\u4F30\u603B\u6B21\u6570 ${nn.callCount}\uFF08\u542B\u7F13\u5B58\u547D\u4E2D\u524D\uFF09`);
-  nn.dispose();
+  console.log(`[selfplay] \u5B8C\u6210\uFF1A\u6807\u7B7E ${labels} \u6761\uFF08\u53BB\u91CD\u540E\uFF09  \u548C\u5C40 ${draws}  \u653E\u5F03 ${aborted}  \u8017\u65F6 ${dt.toFixed(1)} \u5206\u949F \u2192 ${OUT}`);
+  if (nn) nn.dispose();
 }
 main();
