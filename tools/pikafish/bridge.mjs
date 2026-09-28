@@ -141,12 +141,8 @@ class UciEngine {
     const deadline = Date.now() + 120000;
     while (Date.now() < deadline) {
       if (!this.alive) throw new Error('engine died on this position (illegal FEN?)');
-      const line = this.lines.find((l) => l.startsWith('bestmove '));
-      if (line) {
-        const move = line.split(/\s+/)[1] ?? '';
-        return { move, scoreCp, mate, depth: lastDepth, nodes, timeMs };
-      }
-      // 收集最后一条完整 info（含 score 的才更新；不锚定字段序，用词边界宽松匹配）
+      // 先扫 info 再看 bestmove：浅搜时 info 和 bestmove 同批到达，
+      // 若先判 bestmove 直接 return 会漏掉全部统计（深度/节点/评分恒 0）
       for (const l of this.lines) {
         const m = l.match(/\bdepth (\d+)\b.*?\bscore (cp|mate) (-?\d+).*?\bnodes (\d+).*?\btime (\d+)\b/);
         if (m && l.startsWith('info')) {
@@ -156,6 +152,11 @@ class UciEngine {
           nodes = Number(m[4]);
           timeMs = Number(m[5]);
         }
+      }
+      const line = this.lines.find((l) => l.startsWith('bestmove '));
+      if (line) {
+        const move = line.split(/\s+/)[1] ?? '';
+        return { move, scoreCp, mate, depth: lastDepth, nodes, timeMs };
       }
       await new Promise((r) => setTimeout(r, 15));
     }
