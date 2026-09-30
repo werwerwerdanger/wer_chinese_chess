@@ -15,7 +15,7 @@
  * 内存，32G 以下机器建议 --games 3000 起步。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, copyFileSync, readFileSync, writeSync, openSync, closeSync } from 'node:fs';
+import { existsSync, copyFileSync, readFileSync, writeSync, openSync, closeSync, readdirSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -35,6 +35,7 @@ const START_MODEL = get('start-model', 'data/model.onnx');
 const BASE_LABELS = ['data/labeled.txt', 'data/labeled-web.txt', 'data/labeled-selfplay.txt'].filter(existsSync);
 const MERGED = 'data/labeled-evolve.txt';
 const BEST = 'data/model-best.onnx';
+const EVOLVE_LOG = 'data/evolve-log.txt';
 
 function run(cmd, args) {
   console.log(`\n[evolve] >>> ${cmd} ${args.join(' ')}\n`);
@@ -79,17 +80,35 @@ function runGate(model) {
   return m ? Number(m[1]) : null;
 }
 
+/** 扫描已有 gen 产物，自动续号（支持中断后重启 / --gens -1 无限迭代多次调用） */
+function nextGenIndex() {
+  let max = 0;
+  const scan = (dir) => {
+    try {
+      for (const f of readdirSync(dir)) {
+        const m = /(?:labeled-gen|model-gen)(\d+)\.(?:txt|onnx)$/.exec(f);
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+    } catch { /* 目录不存在 */ }
+  };
+  scan('data');
+  return max + 1;
+}
+
 async function main() {
   if (!existsSync(START_MODEL)) throw new Error(`找不到起始模型 ${START_MODEL}`);
   let cur = START_MODEL;
   let bestElo = null;
   const history = [];
+  const INFINITE = GENS < 0;
+  let gen = nextGenIndex();
+  const firstGen = gen;
 
-  console.log(`[evolve] 迭代蒸馏：${GENS} 代 × 每代 ${GAMES} 局陪练自生成  depth=${DEPTH}  并发=${PARALLEL}`);
-  console.log(`[evolve] 起始模型 ${cur}  基础标签 ${BASE_LABELS.length} 个文件`);
+  console.log(`[evolve] 迭代蒸馏：${INFINITE ? '无限' : GENS + ' 代'} × 每代 ${GAMES} 局陪练自生成  depth=${DEPTH}  并发=${PARALLEL}`);
+  console.log(`[evolve] 起始模型 ${cur}  基础标签 ${BASE_LABELS.length} 个文件  代号从 gen${gen} 起`);
 
-  for (let gen = 1; gen <= GENS; gen++) {
-    console.log(`\n========== 第 ${gen}/${GENS} 代（陪练=${cur}） ==========`);
+  for (let done = 0; INFINITE || done < GENS; done++, gen++) {
+    console.log(`\n========== 第 ${gen} 代${INFINITE ? '' : `（${done + 1}/${GENS}）`}（陪练=${cur}） ==========`);
     const t0 = Date.now();
 
     // 1. 陪练自生成
@@ -103,10 +122,11 @@ async function main() {
 
     // 2. 合并（历代 gen 数据全保留进训练集）
     const files = [...BASE_LABELS];
-    for (let k = 1; k <= gen; k++) {
+    for (let k = 1; k < gen; k++) {
       const f = `data/labeled-gen${k}.txt`;
       if (existsSync(f)) files.push(f);
     }
+    files.push(genData);
     const n = mergeLabels(files, MERGED);
     console.log(`[evolve] 合并 ${files.length} 个数据源 → ${MERGED}（${n} 条去重）`);
 
@@ -124,14 +144,14 @@ async function main() {
       cur = model;
       copyFileSync(model, BEST);
     }
-    console.log(`[evolve] 第 ${gen} 代: Elo(vs 旧引擎) = ${elo}  ` +
-      `${promoted ? `>>> 晋级为陪练 (历史最佳 ${bestElo})` : `未超过最佳 ${bestElo}，陪练不变`}  ` +
-      `耗时 ${((Date.now() - t0) / 60000).toFixed(1)} 分钟`);
+    const line = `gen${gen}  Elo=${elo}  ${promoted ? 'PROMOTED' : 'kept ' + bestElo}  ${((Date.now() - t0) / 60000).toFixed(1)}min  ${model}`;
+    console.log(`[evolve] ${line}`);
+    appendFileSync(EVOLVE_LOG, `${new Date().toISOString()}  ${line}\n`);
   }
 
   console.log('\n========== 总结 ==========');
   for (const h of history) console.log(`  第 ${h.gen} 代: Elo ${h.elo}  (${h.model})`);
-  console.log(`[evolve] 最佳模型: ${cur}（已复制为 ${BEST}）`);
+  console.log(`[evolve] 本次最佳: ${cur}（历史累计见 ${EVOLVE_LOG}，最佳模型 ${BEST}）`);
   console.log('[evolve] 教师基线参考: node tools/distill/match.mjs --games 20 --depth 3 --opp pikafish');
 }
 
