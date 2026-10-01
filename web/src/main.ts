@@ -1,5 +1,5 @@
 import { GameController } from './game.js';
-import { LocalEngineAdapter, PikafishAdapter } from './engine-adapters/index.js';
+import { LocalEngineAdapter, PikafishAdapter, NnueAdapter } from './engine-adapters/index.js';
 import { preloadPieceImages, setOnImagesReady } from './renderer.js';
 
 const canvas = document.getElementById('board') as HTMLCanvasElement;
@@ -8,7 +8,7 @@ const moves = document.getElementById('moves')!;
 const fenInput = document.getElementById('fen-input') as HTMLInputElement;
 const btn = (id: string) => document.getElementById(id) as HTMLButtonElement;
 
-const controller = new GameController(canvas, new LocalEngineAdapter(), new PikafishAdapter(), status, moves, {
+const controller = new GameController(canvas, new LocalEngineAdapter(), new PikafishAdapter(), new NnueAdapter(), status, moves, {
   undo: btn('btn-undo'),
   reset: btn('btn-reset'),
   first: btn('btn-first'),

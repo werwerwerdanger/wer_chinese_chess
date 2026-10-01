@@ -39,6 +39,8 @@ export class GameController {
     engine: EngineAdapter,
     /** 可选的第二引擎（如 Pikafish），由对局模式下拉切换 */
     private readonly altEngine: EngineAdapter | null,
+    /** 可选的第三引擎（本地 NNUE 蒸馏模型） */
+    private readonly nnueEngine: EngineAdapter | null,
     private readonly statusBar: HTMLElement,
     private readonly moveList: HTMLElement,
     private readonly buttons: {
@@ -61,29 +63,24 @@ export class GameController {
     this.maybeAiMove();
   }
 
-  /** 人机模式：AI 执黑（本地引擎或 Pikafish） */
+  /** 人机模式：AI 执黑（本地引擎 / Pikafish / NNUE 蒸馏模型） */
   private aiEnabled(): boolean {
     const v = this.mode.select.value;
-    return v === 'pve' || v === 'pikafish';
+    return v === 'pve' || v === 'pikafish' || v === 'nnue';
   }
 
   private aiThinking = false;
 
   /** 对局模式切换：换引擎并对齐局面 */
   private onModeChange(): void {
-    if (!this.altEngine) return;
     const v = this.mode.select.value;
-    const next = v === 'pikafish' ? this.altEngine : null;
-    if (next === null && this.engine === this.altEngine) {
-      // 切回本地引擎：main.ts 传入的主引擎引用
-      const primary = this.primaryEngine;
-      if (primary && primary !== this.engine) {
-        primary.loadFen(this.engine.getFen());
-        this.engine = primary;
-      }
-    } else if (next && next !== this.engine) {
-      next.loadFen(this.engine.getFen());
-      this.engine = next;
+    const next = v === 'pikafish' ? this.altEngine
+      : v === 'nnue' ? this.nnueEngine
+      : null;
+    const target = next ?? this.primaryEngine;
+    if (target && target !== this.engine) {
+      target.loadFen(this.engine.getFen());
+      this.engine = target;
     }
     this.render();
     this.maybeAiMove();
@@ -109,7 +106,8 @@ export class GameController {
           return;
         }
         this.tryMove({ from: t.move.from, to: t.move.to });
-        const src = this.mode.select.value === 'pikafish' ? 'Pikafish' : 'AI';
+        const v = this.mode.select.value;
+        const src = v === 'pikafish' ? 'Pikafish' : v === 'nnue' ? '蒸馏模型' : 'AI';
         this.setStatus(`🤖 ${src}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}）`);
       } catch (err) {
         this.setStatus(`❌ AI 出错：${(err as Error).message}`);
