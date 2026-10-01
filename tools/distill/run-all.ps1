@@ -10,6 +10,7 @@ param(
   [int]$Games = 2000,
   [int]$Parallel = 12,
   [int]$Depth = 12,
+  [int]$LabelDepth = 10,
   [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
@@ -72,7 +73,7 @@ if (Test-Path "data\positions-web.txt") {
   Write-Host "[run-all] ensuring master positions are labeled (resumable, fast if already done)..."
   if ($DryRun) { Write-Host "[run-all] DRYRUN would run label.mjs now" }
   else {
-    node tools/distill/label.mjs --in data/positions-web.txt --out data/labeled-web.txt --depth 14
+    node tools/distill/label.mjs --in data/positions-web.txt --out data/labeled-web.txt --depth $LabelDepth
     if ($LASTEXITCODE -ne 0) { throw "[run-all] label.mjs failed" }
   }
 }
