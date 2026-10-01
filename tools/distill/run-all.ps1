@@ -11,6 +11,7 @@ param(
   [int]$Parallel = 12,
   [int]$Depth = 12,
   [int]$LabelDepth = 10,
+  [switch]$SkipLabel,
   [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
@@ -69,7 +70,9 @@ foreach ($p in $pairs) {
 }
 
 # --- 3. one-time labeling of master positions (resumable; cheap when already complete) ---
-if (Test-Path "data\positions-web.txt") {
+if ($SkipLabel) {
+  Write-Host "[run-all] -SkipLabel: skipping master-position labeling, go straight to the evolve loop"
+} elseif (Test-Path "data\positions-web.txt") {
   Write-Host "[run-all] ensuring master positions are labeled (resumable, fast if already done)..."
   if ($DryRun) { Write-Host "[run-all] DRYRUN would run label.mjs now" }
   else {
