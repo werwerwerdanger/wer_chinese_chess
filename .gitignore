@@ -17,3 +17,5 @@ data/*
 !data/labeled-selfplay.txt.gz
 !data/model.onnx
 !data/model.pt
+!data/model-best.onnx
+!data/model-best.pt
