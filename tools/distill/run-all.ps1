@@ -11,6 +11,7 @@ param(
   [int]$Parallel = 12,
   [int]$Depth = 12,
   [int]$LabelDepth = 10,
+  [int]$Gens = -1,
   [switch]$SkipLabel,
   [switch]$DryRun
 )
@@ -82,11 +83,15 @@ if ($SkipLabel) {
 }
 
 if ($DryRun) {
-  Write-Host "[run-all] DRYRUN would now run forever:"
-  Write-Host "[run-all]   node tools/distill/evolve.mjs --gens -1 --games $Games --parallel $Parallel --depth $Depth --python $Python"
+  Write-Host "[run-all] DRYRUN would now run:"
+  Write-Host "[run-all]   node tools/distill/evolve.mjs --gens $Gens --games $Games --parallel $Parallel --depth $Depth --python $Python"
   exit 0
 }
 
-# --- 4. infinite evolve loop ---
-Write-Host "[run-all] starting infinite evolve loop (Ctrl+C to stop; progress in data\evolve-log.txt)"
-node tools/distill/evolve.mjs --gens -1 --games $Games --parallel $Parallel --depth $Depth --python $Python
+# --- 4. evolve loop ($Gens < 0 = infinite) ---
+if ($Gens -lt 0) {
+  Write-Host "[run-all] starting INFINITE evolve loop (Ctrl+C to stop; progress in data\evolve-log.txt)"
+} else {
+  Write-Host "[run-all] starting evolve loop for $Gens generation(s) (progress in data\evolve-log.txt)"
+}
+node tools/distill/evolve.mjs --gens $Gens --games $Games --parallel $Parallel --depth $Depth --python $Python
