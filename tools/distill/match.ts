@@ -27,9 +27,11 @@ const GAMES = Number(get('games', '20'));
 const DEPTH = Number(get('depth', '3'));
 const TIME_MS = Number(get('time', '60000'));
 const MODEL = get('model', 'data/model.onnx');
+/** opp=nnue 时的对手模型（通常传上一代最佳，做"新版 vs 老版"晋级赛） */
+const MODEL2 = get('model2', 'data/model.onnx');
 const MAX_PLY = Number(get('max-ply', '160'));
 const OPENING_PLIES = Number(get('opening', '4'));
-const OPP = get('opp', 'old'); // old | pikafish
+const OPP = get('opp', 'old'); // old | pikafish | nnue
 const BRIDGE = get('bridge', 'http://127.0.0.1:8788');
 
 interface Player {
@@ -119,7 +121,19 @@ function eloDelta(scoreRate: number): number {
 async function main() {
   const nn = new NnueEvaluator(MODEL);
   const student = searchPlayer(`NNUE蒸馏(${MODEL})`, (b) => nn.evalBoard(b));
-  const opp = OPP === 'pikafish' ? pikafishPlayer() : searchPlayer('子力+PST');
+
+  let opp: Player;
+  let nn2: NnueEvaluator | null = null;
+  if (OPP === 'pikafish') {
+    opp = pikafishPlayer();
+  } else if (OPP === 'nnue') {
+    // 新版 vs 老版：双方都走 NNUE 评估 + 同深度搜索
+    nn2 = new NnueEvaluator(MODEL2);
+    const e2 = nn2;
+    opp = searchPlayer(`NNUE(${MODEL2})`, (b) => e2.evalBoard(b));
+  } else {
+    opp = searchPlayer('子力+PST');
+  }
 
   console.log(`[match] 学生=${student.name}  对手=${opp.name}`);
   console.log(`[match] ${GAMES} 局  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY}  opening=${OPENING_PLIES}随机步`);
@@ -166,6 +180,7 @@ async function main() {
   console.log(`[match] Elo 差（学生-${OPP}）: ${eloDelta(rate)}  总耗时 ${((Date.now() - t0) / 60000).toFixed(1)} 分钟`);
   console.log(`[match] NN 评估总次数 ${nn.callCount}（含缓存命中前）`);
   nn.dispose();
+  if (nn2) nn2.dispose();
 }
 
 main();

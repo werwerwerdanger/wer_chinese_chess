@@ -1265,6 +1265,7 @@ var GAMES = Number(get("games", "20"));
 var DEPTH = Number(get("depth", "3"));
 var TIME_MS = Number(get("time", "60000"));
 var MODEL = get("model", "data/model.onnx");
+var MODEL2 = get("model2", "data/model.onnx");
 var MAX_PLY2 = Number(get("max-ply", "160"));
 var OPENING_PLIES = Number(get("opening", "4"));
 var OPP = get("opp", "old");
@@ -1333,7 +1334,17 @@ function eloDelta(scoreRate) {
 async function main() {
   const nn = new NnueEvaluator(MODEL);
   const student = searchPlayer(`NNUE\u84B8\u998F(${MODEL})`, (b) => nn.evalBoard(b));
-  const opp = OPP === "pikafish" ? pikafishPlayer() : searchPlayer("\u5B50\u529B+PST");
+  let opp;
+  let nn2 = null;
+  if (OPP === "pikafish") {
+    opp = pikafishPlayer();
+  } else if (OPP === "nnue") {
+    nn2 = new NnueEvaluator(MODEL2);
+    const e2 = nn2;
+    opp = searchPlayer(`NNUE(${MODEL2})`, (b) => e2.evalBoard(b));
+  } else {
+    opp = searchPlayer("\u5B50\u529B+PST");
+  }
   console.log(`[match] \u5B66\u751F=${student.name}  \u5BF9\u624B=${opp.name}`);
   console.log(`[match] ${GAMES} \u5C40  depth=${DEPTH}  time=${TIME_MS}ms  maxPly=${MAX_PLY2}  opening=${OPENING_PLIES}\u968F\u673A\u6B65`);
   let seed = Number(get("seed", "20260928"));
@@ -1380,5 +1391,6 @@ async function main() {
   console.log(`[match] Elo \u5DEE\uFF08\u5B66\u751F-${OPP}\uFF09: ${eloDelta(rate)}  \u603B\u8017\u65F6 ${((Date.now() - t0) / 6e4).toFixed(1)} \u5206\u949F`);
   console.log(`[match] NN \u8BC4\u4F30\u603B\u6B21\u6570 ${nn.callCount}\uFF08\u542B\u7F13\u5B58\u547D\u4E2D\u524D\uFF09`);
   nn.dispose();
+  if (nn2) nn2.dispose();
 }
 main();

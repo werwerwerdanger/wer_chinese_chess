@@ -31,7 +31,8 @@ const GATE_GAMES = Number(get('gate-games', '20'));
 const GATE_DEPTH = Number(get('gate-depth', '3'));
 const PARALLEL = Number(get('parallel', '8'));
 const PYTHON = get('python', 'python'); // torch venv 的 python
-const START_MODEL = get('start-model', 'data/model.onnx');
+/** 默认从历史最佳起跑（存在 model-best 就用它），避免续跑时退化回初始模型 */
+const START_MODEL = get('start-model', existsSync('data/model-best.onnx') ? 'data/model-best.onnx' : 'data/model.onnx');
 const BASE_LABELS = ['data/labeled.txt', 'data/labeled-web.txt', 'data/labeled-selfplay.txt'].filter(existsSync);
 const MERGED = 'data/labeled-evolve.txt';
 const BEST = 'data/model-best.onnx';
@@ -68,15 +69,15 @@ function mergeLabels(files, out) {
   return n;
 }
 
-function runGate(model) {
-  // match 输出最后一行含 "Elo 差（学生-old）: N"；stdio inherit 看不到，改为管道捕获
+function runGate(model, prevModel) {
+  // 晋级赛：新版 vs 上一代最佳，同深度同评估架构，赢面过半才算进步
   const r = spawnSync(process.execPath, [
     'tools/distill/match.mjs', '--games', String(GATE_GAMES), '--depth', String(GATE_DEPTH),
-    '--model', model, '--opp', 'old',
+    '--model', model, '--opp', 'nnue', '--model2', prevModel,
   ], { encoding: 'utf8' });
   process.stdout.write(r.stdout ?? '');
   process.stderr.write(r.stderr ?? '');
-  const m = (r.stdout ?? '').match(/Elo 差（学生-old）:\s*(-?\d+)/);
+  const m = (r.stdout ?? '').match(/Elo 差（学生-[^）]+）:\s*(-?\d+)/);
   return m ? Number(m[1]) : null;
 }
 
@@ -98,7 +99,7 @@ function nextGenIndex() {
 async function main() {
   if (!existsSync(START_MODEL)) throw new Error(`找不到起始模型 ${START_MODEL}`);
   let cur = START_MODEL;
-  let bestElo = null;
+  let cumulativeElo = 0; // 相对起跑模型的累计 Elo（每代晋级赛的增量之和）
   const history = [];
   const INFINITE = GENS < 0;
   let gen = nextGenIndex();
@@ -134,17 +135,18 @@ async function main() {
     const model = `data/model-gen${gen}.onnx`;
     run(PYTHON, ['tools/distill/train.py', '--data', MERGED, '--out', model]);
 
-    // 4. Gate：对打旧引擎，Elo 择优晋级
-    const elo = runGate(model);
+    // 4. Gate：晋级赛（新版 vs 上一代最佳），累计 Elo 记录绝对进步
+    const elo = runGate(model, cur);
     if (elo === null) throw new Error('Gate 对打没解析出 Elo，检查 match 输出');
     history.push({ gen, elo, model });
-    const promoted = bestElo === null || elo >= bestElo;
+    const promoted = elo >= 0; // 得分率 ≥ 50% 才晋级
     if (promoted) {
-      bestElo = elo;
+      cumulativeElo += elo;
       cur = model;
       copyFileSync(model, BEST);
     }
-    const line = `gen${gen}  Elo=${elo}  ${promoted ? 'PROMOTED' : 'kept ' + bestElo}  ${((Date.now() - t0) / 60000).toFixed(1)}min  ${model}`;
+    const line = `gen${gen}  Elo_vs_prev=${elo >= 0 ? '+' : ''}${elo}  cumulative=${cumulativeElo >= 0 ? '+' : ''}${cumulativeElo}  ` +
+      `${promoted ? 'PROMOTED' : 'KEPT'}  ${((Date.now() - t0) / 60000).toFixed(1)}min  ${model}`;
     console.log(`[evolve] ${line}`);
     appendFileSync(EVOLVE_LOG, `${new Date().toISOString()}  ${line}\n`);
   }
