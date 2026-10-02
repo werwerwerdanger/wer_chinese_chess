@@ -37,11 +37,24 @@ const BASE_LABELS = ['data/labeled.txt', 'data/labeled-web.txt', 'data/labeled-s
 const MERGED = 'data/labeled-evolve.txt';
 const BEST = 'data/model-best.onnx';
 const EVOLVE_LOG = 'data/evolve-log.txt';
+const BRIDGE = get('bridge', 'http://127.0.0.1:8788');
 
 function run(cmd, args) {
   console.log(`\n[evolve] >>> ${cmd} ${args.join(' ')}\n`);
   const r = spawnSync(cmd, args, { stdio: 'inherit' });
   if (r.status !== 0) throw new Error(`${cmd} 退出码 ${r.status}`);
+}
+
+/** 桥接预检：不到就带清晰提示退出，避免白跑一整代 */
+async function checkBridge() {
+  try {
+    const r = await fetch(`${BRIDGE}/ping`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch (err) {
+    console.error(`[evolve] ✖ 桥接服务不可达 (${BRIDGE}): ${err.message}`);
+    console.error('[evolve] 请先在另一个窗口启动： node tools/pikafish/bridge.mjs');
+    process.exit(1);
+  }
 }
 
 function mergeLabels(files, out) {
@@ -109,6 +122,7 @@ async function main() {
   console.log(`[evolve] 起始模型 ${cur}  基础标签 ${BASE_LABELS.length} 个文件  代号从 gen${gen} 起`);
 
   for (let done = 0; INFINITE || done < GENS; done++, gen++) {
+    await checkBridge(); // 每代开跑前确认桥还活着
     console.log(`\n========== 第 ${gen} 代${INFINITE ? '' : `（${done + 1}/${GENS}）`}（陪练=${cur}） ==========`);
     const t0 = Date.now();
 

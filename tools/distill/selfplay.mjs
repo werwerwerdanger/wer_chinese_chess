@@ -1304,6 +1304,7 @@ var labels = 0;
 var doneGames = 0;
 var draws = 0;
 var aborted = 0;
+var consecutiveFails = 0;
 var t0 = Date.now();
 function addLabel(fen, label) {
   if (label === null || seen.has(fen)) return;
@@ -1374,6 +1375,7 @@ function studentMove(b) {
 }
 async function worker(w) {
   for (let g = w; g < GAMES; g += PARALLEL) {
+    let failed = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await playOneGame(g);
@@ -1381,11 +1383,19 @@ async function worker(w) {
       } catch (err) {
         if (attempt === 2) {
           aborted++;
+          failed = true;
           console.error(`[selfplay] \u5C40 ${g + 1} \u4E09\u6B21\u5931\u8D25\u653E\u5F03: ${err.message}`);
         } else {
           await new Promise((res) => setTimeout(res, 3e3));
         }
       }
+    }
+    consecutiveFails = failed ? consecutiveFails + 1 : 0;
+    if (consecutiveFails >= 5) {
+      flush();
+      console.error(`[selfplay] \u2716 \u8FDE\u7EED ${consecutiveFails} \u5C40\u5931\u8D25\uFF0C\u5224\u5B9A\u6865\u63A5\u5DF2\u65AD\uFF0C\u9000\u51FA\uFF08\u5DF2\u4EA7\u51FA\u6807\u7B7E ${labels} \u6761\uFF09`);
+      console.error("[selfplay] \u68C0\u67E5 bridge \u7A97\u53E3\u662F\u5426\u8FD8\u5728\uFF0C\u91CD\u542F\u540E\u91CD\u8DD1\u5373\u53EF");
+      process.exit(1);
     }
     doneGames++;
     flush();
@@ -1397,6 +1407,15 @@ async function worker(w) {
   }
 }
 async function main() {
+  try {
+    const r = await fetch(`${BRIDGE}/ping`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    console.log(`[selfplay] \u6865\u63A5\u5C31\u7EEA\uFF1A${(await r.json()).name ?? BRIDGE}`);
+  } catch (err) {
+    console.error(`[selfplay] \u2716 \u6865\u63A5\u670D\u52A1\u4E0D\u53EF\u8FBE (${BRIDGE}): ${err.message}`);
+    console.error("[selfplay] \u8BF7\u5148\u5728\u53E6\u4E00\u4E2A\u7A97\u53E3\u542F\u52A8\uFF1A node tools/pikafish/bridge.mjs");
+    process.exit(1);
+  }
   writeFileSync(OUT, "");
   console.log(`[selfplay] \u6A21\u5F0F=${MODE === "pp" ? "Pikafish vs Pikafish" : "\u5B66\u751FNNUE vs Pikafish"}  ${GAMES} \u5C40 \xD7 ${PARALLEL} \u5E76\u53D1  depth=${DEPTH}  opening=${OPENING_PLIES}\u968F\u673A\u6B65  labelAll=${LABEL_ALL}  \u2192 ${OUT}`);
   await Promise.all(Array.from({ length: PARALLEL }, (_, w) => worker(w)));

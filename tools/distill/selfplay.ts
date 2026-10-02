@@ -72,6 +72,7 @@ let labels = 0;
 let doneGames = 0;
 let draws = 0;
 let aborted = 0;
+let consecutiveFails = 0;
 const t0 = Date.now();
 
 function addLabel(fen: string, label: number | null) {
@@ -151,6 +152,7 @@ function studentMove(b: Board) {
 
 async function worker(w: number): Promise<void> {
   for (let g = w; g < GAMES; g += PARALLEL) {
+    let failed = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await playOneGame(g);
@@ -158,11 +160,20 @@ async function worker(w: number): Promise<void> {
       } catch (err) {
         if (attempt === 2) {
           aborted++;
+          failed = true;
           console.error(`[selfplay] 局 ${g + 1} 三次失败放弃: ${(err as Error).message}`);
         } else {
           await new Promise((res) => setTimeout(res, 3000));
         }
       }
+    }
+    // 连续失败 = 桥多半挂了，立刻停，别把整批空转完
+    consecutiveFails = failed ? consecutiveFails + 1 : 0;
+    if (consecutiveFails >= 5) {
+      flush();
+      console.error(`[selfplay] ✖ 连续 ${consecutiveFails} 局失败，判定桥接已断，退出（已产出标签 ${labels} 条）`);
+      console.error('[selfplay] 检查 bridge 窗口是否还在，重启后重跑即可');
+      process.exit(1);
     }
     doneGames++;
     flush();
@@ -176,6 +187,17 @@ async function worker(w: number): Promise<void> {
 }
 
 async function main() {
+  // 预检：桥不可达就直接退出，别把 2000 局全空转完（每条 fetch failed 还白等重试）
+  try {
+    const r = await fetch(`${BRIDGE}/ping`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    console.log(`[selfplay] 桥接就绪：${((await r.json()) as { name?: string }).name ?? BRIDGE}`);
+  } catch (err) {
+    console.error(`[selfplay] ✖ 桥接服务不可达 (${BRIDGE}): ${(err as Error).message}`);
+    console.error('[selfplay] 请先在另一个窗口启动： node tools/pikafish/bridge.mjs');
+    process.exit(1);
+  }
+
   writeFileSync(OUT, ''); // 清空旧文件（自生成整批重跑比续传简单）
   console.log(`[selfplay] 模式=${MODE === 'pp' ? 'Pikafish vs Pikafish' : '学生NNUE vs Pikafish'}  ` +
     `${GAMES} 局 × ${PARALLEL} 并发  depth=${DEPTH}  opening=${OPENING_PLIES}随机步  labelAll=${LABEL_ALL}  → ${OUT}`);
