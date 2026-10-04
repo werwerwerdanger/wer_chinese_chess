@@ -158,6 +158,10 @@ async function main() {
       cumulativeElo += elo;
       cur = model;
       copyFileSync(model, BEST);
+      // 同步 .pt 权重：train.py 每代都会落 model-gen{N}.pt，但 BEST 只复制了 onnx，
+      // 导致 data/model-best.pt 长期停留在旧代（续训用它会静静退回去）。一并同步。
+      const pt = model.replace(/\.onnx$/, '.pt');
+      if (existsSync(pt)) copyFileSync(pt, BEST.replace(/\.onnx$/, '.pt'));
     }
     const line = `gen${gen}  Elo_vs_prev=${elo >= 0 ? '+' : ''}${elo}  cumulative=${cumulativeElo >= 0 ? '+' : ''}${cumulativeElo}  ` +
       `${promoted ? 'PROMOTED' : 'KEPT'}  ${((Date.now() - t0) / 60000).toFixed(1)}min  ${model}`;

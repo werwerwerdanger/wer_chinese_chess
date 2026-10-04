@@ -1,0 +1,61 @@
+2026-10-01T04:11:43.183Z  gen1  Elo=-127  PROMOTED  31.0min  data/model-gen1.onnx
+2026-10-01T04:30:18.785Z  gen2  Elo=-108  PROMOTED  18.6min  data/model-gen2.onnx
+2026-10-01T04:49:00.500Z  gen3  Elo=-127  kept -108  18.7min  data/model-gen3.onnx
+2026-10-01T05:07:22.801Z  gen4  Elo=-70  PROMOTED  18.4min  data/model-gen4.onnx
+2026-10-01T05:29:02.804Z  gen5  Elo=-89  kept -70  21.7min  data/model-gen5.onnx
+2026-10-01T05:50:37.031Z  gen6  Elo=-108  kept -70  21.6min  data/model-gen6.onnx
+2026-10-01T06:12:22.077Z  gen7  Elo=-70  PROMOTED  21.8min  data/model-gen7.onnx
+2026-10-01T06:35:26.393Z  gen8  Elo=-108  kept -70  23.1min  data/model-gen8.onnx
+2026-10-01T06:58:04.483Z  gen9  Elo=-127  kept -70  22.6min  data/model-gen9.onnx
+2026-10-01T07:21:00.863Z  gen10  Elo=-108  kept -70  22.9min  data/model-gen10.onnx
+2026-10-01T07:42:08.847Z  gen11  Elo=-127  kept -70  21.1min  data/model-gen11.onnx
+2026-10-01T08:03:24.683Z  gen12  Elo=-89  kept -70  21.3min  data/model-gen12.onnx
+2026-10-01T08:24:49.450Z  gen13  Elo=-35  PROMOTED  21.4min  data/model-gen13.onnx
+2026-10-01T08:56:29.302Z  gen14  Elo=-147  kept -35  31.7min  data/model-gen14.onnx
+2026-10-01T09:26:29.178Z  gen15  Elo=-127  kept -35  30.0min  data/model-gen15.onnx
+2026-10-01T09:57:14.108Z  gen16  Elo=-127  kept -35  30.7min  data/model-gen16.onnx
+2026-10-01T10:22:39.527Z  gen17  Elo=-53  kept -35  25.4min  data/model-gen17.onnx
+2026-10-01T10:53:57.349Z  gen18  Elo=-89  kept -35  31.3min  data/model-gen18.onnx
+2026-10-01T11:25:06.075Z  gen19  Elo=-108  kept -35  31.1min  data/model-gen19.onnx
+2026-10-01T11:48:27.733Z  gen20  Elo=-108  kept -35  23.4min  data/model-gen20.onnx
+2026-10-01T12:19:24.239Z  gen21  Elo=-108  kept -35  30.9min  data/model-gen21.onnx
+2026-10-01T12:48:56.600Z  gen22  Elo=-89  kept -35  29.5min  data/model-gen22.onnx
+2026-10-01T13:20:35.115Z  gen23  Elo=0  PROMOTED  31.6min  data/model-gen23.onnx
+2026-10-01T13:43:07.173Z  gen24  Elo=-127  kept 0  22.5min  data/model-gen24.onnx
+2026-10-01T14:04:11.207Z  gen25  Elo=-89  kept 0  21.1min  data/model-gen25.onnx
+2026-10-01T14:27:34.027Z  gen26  Elo=-70  kept 0  23.4min  data/model-gen26.onnx
+2026-10-01T14:49:31.647Z  gen27  Elo=-53  kept 0  22.0min  data/model-gen27.onnx
+2026-10-01T15:11:52.989Z  gen28  Elo=-108  kept 0  22.4min  data/model-gen28.onnx
+2026-10-01T15:34:20.826Z  gen29  Elo=-127  kept 0  22.5min  data/model-gen29.onnx
+2026-10-01T15:56:27.680Z  gen30  Elo=-108  kept 0  22.1min  data/model-gen30.onnx
+2026-10-01T16:21:06.207Z  gen31  Elo=0  PROMOTED  24.6min  data/model-gen31.onnx
+2026-10-02T08:45:28.697Z  gen33  Elo_vs_prev=+17  cumulative=+17  PROMOTED  141.2min  data/model-gen33.onnx
+2026-10-02T09:23:38.084Z  gen34  Elo_vs_prev=-17  cumulative=+17  KEPT  38.2min  data/model-gen34.onnx
+2026-10-02T09:59:13.470Z  gen35  Elo_vs_prev=+35  cumulative=+52  PROMOTED  35.6min  data/model-gen35.onnx
+2026-10-02T10:31:05.729Z  gen36  Elo_vs_prev=-35  cumulative=+52  KEPT  31.9min  data/model-gen36.onnx
+2026-10-02T11:05:02.234Z  gen37  Elo_vs_prev=+0  cumulative=+52  PROMOTED  33.9min  data/model-gen37.onnx
+2026-10-02T11:39:52.294Z  gen38  Elo_vs_prev=+35  cumulative=+87  PROMOTED  34.8min  data/model-gen38.onnx
+2026-10-02T12:12:23.016Z  gen39  Elo_vs_prev=-53  cumulative=+87  KEPT  32.5min  data/model-gen39.onnx
+2026-10-02T12:42:43.006Z  gen40  Elo_vs_prev=-17  cumulative=+87  KEPT  30.3min  data/model-gen40.onnx
+2026-10-02T13:19:48.419Z  gen41  Elo_vs_prev=-17  cumulative=+87  KEPT  37.1min  data/model-gen41.onnx
+2026-10-02T13:51:44.284Z  gen42  Elo_vs_prev=+0  cumulative=+87  PROMOTED  31.9min  data/model-gen42.onnx
+2026-10-02T15:45:57.019Z  gen44  Elo_vs_prev=+0  cumulative=+0  PROMOTED  84.2min  data/model-gen44.onnx
+2026-10-02T16:56:08.263Z  gen45  Elo_vs_prev=+17  cumulative=+17  PROMOTED  70.2min  data/model-gen45.onnx
+2026-10-02T18:16:19.413Z  gen46  Elo_vs_prev=+0  cumulative=+17  PROMOTED  80.2min  data/model-gen46.onnx
+2026-10-02T19:24:10.942Z  gen47  Elo_vs_prev=-17  cumulative=+17  KEPT  67.9min  data/model-gen47.onnx
+2026-10-02T20:31:11.384Z  gen48  Elo_vs_prev=-17  cumulative=+17  KEPT  67.0min  data/model-gen48.onnx
+2026-10-02T21:37:43.772Z  gen49  Elo_vs_prev=+17  cumulative=+34  PROMOTED  66.5min  data/model-gen49.onnx
+2026-10-02T22:57:15.536Z  gen50  Elo_vs_prev=-35  cumulative=+34  KEPT  79.5min  data/model-gen50.onnx
+2026-10-03T00:17:51.990Z  gen51  Elo_vs_prev=+0  cumulative=+34  PROMOTED  80.6min  data/model-gen51.onnx
+2026-10-03T01:28:42.391Z  gen52  Elo_vs_prev=-35  cumulative=+34  KEPT  70.8min  data/model-gen52.onnx
+2026-10-03T02:38:03.939Z  gen53  Elo_vs_prev=+0  cumulative=+34  PROMOTED  69.4min  data/model-gen53.onnx
+2026-10-03T04:40:59.656Z  gen54  Elo_vs_prev=-17  cumulative=+34  KEPT  122.9min  data/model-gen54.onnx
+2026-10-03T06:43:20.668Z  gen55  Elo_vs_prev=+0  cumulative=+34  PROMOTED  122.4min  data/model-gen55.onnx
+2026-10-03T08:47:45.712Z  gen56  Elo_vs_prev=+53  cumulative=+87  PROMOTED  124.4min  data/model-gen56.onnx
+2026-10-03T10:00:24.402Z  gen57  Elo_vs_prev=+53  cumulative=+140  PROMOTED  72.6min  data/model-gen57.onnx
+2026-10-03T11:41:43.072Z  gen58  Elo_vs_prev=+17  cumulative=+157  PROMOTED  101.3min  data/model-gen58.onnx
+2026-10-03T13:50:59.306Z  gen59  Elo_vs_prev=-17  cumulative=+157  KEPT  129.3min  data/model-gen59.onnx
+2026-10-03T15:27:20.135Z  gen60  Elo_vs_prev=+17  cumulative=+174  PROMOTED  96.3min  data/model-gen60.onnx
+2026-10-03T17:09:27.436Z  gen61  Elo_vs_prev=+0  cumulative=+174  PROMOTED  102.1min  data/model-gen61.onnx
+2026-10-03T18:33:51.842Z  gen62  Elo_vs_prev=+0  cumulative=+174  PROMOTED  84.4min  data/model-gen62.onnx
+2026-10-03T20:23:14.547Z  gen63  Elo_vs_prev=+35  cumulative=+209  PROMOTED  109.4min  data/model-gen63.onnx
