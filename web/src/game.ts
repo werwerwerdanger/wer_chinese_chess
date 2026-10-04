@@ -108,7 +108,7 @@ export class GameController {
         this.tryMove({ from: t.move.from, to: t.move.to });
         const v = this.mode.select.value;
         const src = v === 'pikafish' ? 'Pikafish' : v === 'nnue' ? '蒸馏模型' : 'AI';
-        this.setStatus(`🤖 ${src}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}）`);
+        this.setStatus(`🤖 ${src}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}｜红方视角）`);
       } catch (err) {
         this.setStatus(`❌ AI 出错：${(err as Error).message}`);
       } finally {

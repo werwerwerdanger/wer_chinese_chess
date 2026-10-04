@@ -69,6 +69,37 @@ describe('search 正确性', () => {
   });
 });
 
+describe('search 视角一致性（回归：2026-10-04 奇数层 min 节点 bug）', () => {
+  /**
+   * 历史 bug：alphabeta 叶子处多乘了一次 sign，而 quiescence 返回的本来就是「当前方视角」，
+   * 于是每个叶子被多翻一次符号 → 奇数深度整棵树退化成「取最小」，根节点专挑最差着法
+   * （实测开局 depth1/3 会选「炮八进八」白兑炮换马，评分随深度正负跳变 ±2884/-544）。
+   *
+   * 用「红多一车」局面把约定钉死：红方走子且红大优，各层评分必须同号为正。
+   */
+  const RED_UP_ROOK = '1nbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w';
+
+  it('红优局面：1~4 层评分必须同号为正（当前方视角 = 红）', () => {
+    const b = new Board(RED_UP_ROOK);
+    for (const d of [1, 2, 3, 4]) {
+      const r = findBestMove(b, d, 8000);
+      expect(r.bestMove).not.toBeNull();
+      // 己方大优时不该出现负分（旧 bug 下 depth1/3 会是负的）
+      expect(r.score).toBeGreaterThan(0);
+    }
+  });
+
+  it('白送车时引擎必须吃（1/2/3 层都要吃，奇数层也会退化成挑最差着法）', () => {
+    // 黑车(5,4) 无保护，红炮(7,4) 隔兵(6,4)吃
+    for (const d of [1, 2, 3]) {
+      const b = new Board('4k4/9/9/9/4r4/9/4P4/4C4/9/4K4 w');
+      const r = findBestMove(b, d, 5000);
+      expect(r.bestMove).not.toBeNull();
+      expect(r.bestMove!.to).toBe(sq(4, 4));
+    }
+  });
+});
+
 describe('search 性能基线', () => {
   it('初始局面 depth 3 < 3s', () => {
     const b = new Board();

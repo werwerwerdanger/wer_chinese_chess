@@ -66,9 +66,12 @@ export class PikafishAdapter implements EngineAdapter {
     });
     if (!hit) throw new EngineError(`Pikafish 返回非法走法 ${r.move}`);
 
+    // UCI 的 score cp 是「行棋方视角」→ 乘 sign 统一成「红方视角」（正 = 红优，单位厘兵）
+    const sign = this.local.getPosition().turn === 0 ? 1 : -1;
+    const mateScore = 10000;
     const score = r.mate !== null
-      ? (r.mate > 0 ? 1000 - r.mate : -1000 - r.mate)
-      : Math.round(r.scoreCp ?? 0) / 100;
+      ? sign * (r.mate > 0 ? mateScore - Math.abs(r.mate) : -mateScore + Math.abs(r.mate))
+      : sign * Math.round(r.scoreCp ?? 0);
     return { move: hit, score, depth: r.depth, nodes: r.nodes, timeMs: Math.round(performance.now() - t0) };
   }
 

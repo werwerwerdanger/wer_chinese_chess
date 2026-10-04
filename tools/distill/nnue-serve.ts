@@ -59,7 +59,7 @@ http.createServer((req, res) => {
         // 交互场景钳制 depth≤3、时限 3s，超时返回当前最优
         const r = searcher.search(Math.min(Math.max(1, depth | 0), 3), 3000);
         if (!r.bestMove) throw new Error('无棋可走');
-        // SearchResult.score 是红方视角 → 转行棋方视角（与 local-adapter 一致）
+        // Searcher.search 的 score 是「当前走子方视角」→ 乘 sign 统一成「红方视角」（正 = 红优）
         const sign = board.turn === 0 ? 1 : -1;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({

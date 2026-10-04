@@ -53,6 +53,31 @@ npm run dev     # dev server → http://localhost:5173
 npm run build   # 前端构建
 ```
 
+## 蒸馏工具链（tools/distill/）
+
+Pikafish 当教师、小 MLP 当学生的迭代蒸馏管线（详见 `docs/devlog/m4-nnue-distill.md`）。
+
+```powershell
+.\tools\distill\run-all.ps1                 # 一键：起桥 → 解压 → 标注 → 迭代闭环
+node tools/distill/evolve-plot.mjs --out fig.html --md summary.md   # 进化曲线
+node tools/distill/probe-eval.mjs --compare 新.onnx 旧.onnx         # 换模型前的体检
+node tools/distill/match.mjs --model 新.onnx --opp nnue --model2 旧.onnx --games 20
+```
+
+⚠️ **改了 `engine/src`、`engine-ai/src` 或 `tools/distill/*.ts` 之后必须重新打包**，
+否则跑的还是旧代码。打包参数已固定在脚本里：
+
+```powershell
+.\tools\distill\build-distill.ps1
+```
+
+⚠️ **搜索层视角约定（踩过坑）**：`Searcher.search()` 的 `score` 是**当前走子方视角**，
+adapter 里乘 `sign`（红+1/黑-1）才变成「红方视角」。历史 bug 见
+`docs/devlog/m4b-search-sign-bug.md`：叶子处多乘一次 `sign`，导致**奇数深度整棵树退化成取最小**，
+根节点专挑最差着法（开局 depth1 会主动白兑炮换马、评分随深度正负跳变）。
+`engine-ai/tests/search.test.ts` 已有回归测试钉死。
+
+
 ## 里程碑
 
 - [x] M1 规则引擎（走子生成/合法性，perft 金标准全对）

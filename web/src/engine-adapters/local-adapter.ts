@@ -107,7 +107,8 @@ export class LocalEngineAdapter implements EngineAdapter {
     const searcher = new Searcher(this.board);
     const r = searcher.search(depth, timeLimitMs);
     if (!r.bestMove) throw new EngineError('无棋可走');
-    // SearchResult.score 是红方视角，转成"当前思考方"视角供 UI 展示
+    // Searcher.search 的 score 是「当前走子方视角」，乘 sign 换成统一的「红方视角」给 UI
+    // （正 = 红优，单位厘兵）
     const sign = this.board.turn === 0 ? 1 : -1;
     return {
       move: r.bestMove,

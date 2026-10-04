@@ -124,7 +124,15 @@ export class Searcher {
   }
 
   /**
-   * negamax alpha-beta 主体。sign = 当前方视角系数（红+1/黑-1）。
+   * negamax alpha-beta 主体。
+   *
+   * ⚠️ 视角约定（2026-10-04 修 bug 后定稿，改动前请先读这段）：
+   *   本函数与 quiescence 的返回值一律是「当前走子方视角」（MV = sign × 红方视角），
+   *   父节点直接取负即可，绝不能再乘一次 sign。
+   *   历史 bug：叶子处写成 `sign * quiescence(...)`，而 quiescence 返回的就是 MV，
+   *   于是每个叶子被多乘了一次 sign → 奇数层整棵树变成「取最小」，根节点会挑最差着法
+   *   （实测开局 depth1 挑「炮八进八」白兑炮换马，depth3 评分 ±2884 乱跳）。
+   *   sign 只在「评估函数是红方视角」这一处使用（quiescence 的 standPat）。
    */
   private alphabeta(
     depth: number,
@@ -138,14 +146,14 @@ export class Searcher {
 
     // 递归硬上限：防长将循环 + 将军延伸导致爆栈
     if (ply >= MAX_PLY) {
-      return sign * this.quiescence(alpha, beta, sign, 0, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 0, deadlineHit);
     }
 
     // 重复局面（Zobrist 相同）判和 → 0 分。简化处理：当前 hash 出现在 TT 的 Exact 表项
     // （更严谨需要历史 hash 列表；v1 从简）
 
     if (depth <= 0) {
-      return sign * this.quiescence(alpha, beta, sign, 4, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 4, deadlineHit);
     }
 
     const key = this.board.hashKey;
@@ -214,7 +222,7 @@ export class Searcher {
     return bestScore;
   }
 
-  /** 静态搜索：只延伸吃子着法，直到局面安静 */
+  /** 静态搜索：只延伸吃子着法，直到局面安静。返回值 = 当前走子方视角（MV = sign × 红方视角） */
   private quiescence(
     alpha: number,
     beta: number,

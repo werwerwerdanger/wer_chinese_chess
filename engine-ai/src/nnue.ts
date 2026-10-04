@@ -60,24 +60,36 @@ const WORKER_SRC = `
   } catch {
     workerData = (await import('node:worker_threads')).workerData;
   }
-  let ort;
-  try {
-    ort = require('onnxruntime-node');
-  } catch {
-    ort = await import('onnxruntime-node');
-  }
-  const session = await ort.InferenceSession.create(workerData.modelPath);
   const i32 = new Int32Array(workerData.sab, 0, 4);
   const input = new Float32Array(workerData.sab, 16, ${VEC_LEN});
   const output = new Float32Array(workerData.sab, 16 + ${VEC_LEN} * 4, 1);
-  i32[1] = 1; Atomics.notify(i32, 1); // ready（必须用 Atomics 唤醒主线程的 wait）
-  for (;;) {
-    Atomics.wait(i32, 0, 0);          // 等主线程发请求（0→1）
-    const t = new ort.Tensor('float32', input.slice(), [1, ${VEC_LEN}]);
-    const res = await session.run({ board: t });
-    output[0] = res['score'].data[0];
-    Atomics.store(i32, 0, 0);         // 处理完成
-    Atomics.notify(i32, 0);
+  // ⚠️ 初始化失败必须自己唤醒主线程：主线程正阻塞在 Atomics.wait 上，
+  //    它的 worker.on('error'/'exit') 回调要等 wait 返回才会跑，否则只能干等 30s 超时。
+  const fail = (e) => {
+    console.error('[nnue-w] FATAL', e);
+    i32[1] = 2;
+    Atomics.notify(i32, 1);
+    process.exit(1);
+  };
+  try {
+    let ort;
+    try {
+      ort = require('onnxruntime-node');
+    } catch {
+      ort = await import('onnxruntime-node');
+    }
+    const session = await ort.InferenceSession.create(workerData.modelPath);
+    i32[1] = 1; Atomics.notify(i32, 1); // ready（必须用 Atomics 唤醒主线程的 wait）
+    for (;;) {
+      Atomics.wait(i32, 0, 0);          // 等主线程发请求（0→1）
+      const t = new ort.Tensor('float32', input.slice(), [1, ${VEC_LEN}]);
+      const res = await session.run({ board: t });
+      output[0] = res['score'].data[0];
+      Atomics.store(i32, 0, 0);         // 处理完成
+      Atomics.notify(i32, 0);
+    }
+  } catch (e) {
+    fail(e);
   }
 })().catch((e) => { console.error('[nnue-w] FATAL', e); process.exit(1); });
 `;
@@ -115,7 +127,8 @@ export class NnueEvaluator {
     // 阻塞等 worker 完成 session 初始化（node 主线程允许 Atomics.wait）
     const wr = Atomics.wait(this.i32, 1, 0, 30000);
     if (wr !== 'ok' || this.i32[1] !== 1) {
-      throw new Error(`nnue worker init failed (${wr}): ${(this as { errMsg?: string }).errMsg ?? 'flag=' + this.i32[1]}`);
+      const why = (this as { errMsg?: string }).errMsg ?? `flag=${this.i32[1]}`;
+      throw new Error(`nnue worker init failed (${wr}): ${why}（模型路径 ${modelPath}）`);
     }
   }
 

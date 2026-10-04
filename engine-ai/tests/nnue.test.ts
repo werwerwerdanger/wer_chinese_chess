@@ -9,7 +9,8 @@ import { Board } from '@wer-chess/engine';
 import { NnueEvaluator } from '../src/nnue.js';
 import { Searcher } from '../src/search.js';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+// 测试文件在 <repo>/engine-ai/tests/ → 仓库根要退两级（曾经写成三级，指向仓库外，导致 30s 超时）
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MODEL = join(repoRoot, 'data', 'model.onnx');
 
 describe('NnueEvaluator（真实模型推理）', () => {

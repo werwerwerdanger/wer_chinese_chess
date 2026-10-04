@@ -1000,15 +1000,23 @@ var Searcher = class {
     return { move: bestMove, score: bestScore };
   }
   /**
-   * negamax alpha-beta 主体。sign = 当前方视角系数（红+1/黑-1）。
+   * negamax alpha-beta 主体。
+   *
+   * ⚠️ 视角约定（2026-10-04 修 bug 后定稿，改动前请先读这段）：
+   *   本函数与 quiescence 的返回值一律是「当前走子方视角」（MV = sign × 红方视角），
+   *   父节点直接取负即可，绝不能再乘一次 sign。
+   *   历史 bug：叶子处写成 `sign * quiescence(...)`，而 quiescence 返回的就是 MV，
+   *   于是每个叶子被多乘了一次 sign → 奇数层整棵树变成「取最小」，根节点会挑最差着法
+   *   （实测开局 depth1 挑「炮八进八」白兑炮换马，depth3 评分 ±2884 乱跳）。
+   *   sign 只在「评估函数是红方视角」这一处使用（quiescence 的 standPat）。
    */
   alphabeta(depth, alpha, beta, sign, deadlineHit, ply) {
     this.nodes++;
     if (ply >= MAX_PLY) {
-      return sign * this.quiescence(alpha, beta, sign, 0, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 0, deadlineHit);
     }
     if (depth <= 0) {
-      return sign * this.quiescence(alpha, beta, sign, 4, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 4, deadlineHit);
     }
     const key = this.board.hashKey;
     const ttEntry = this.tt.get(key);
@@ -1060,7 +1068,7 @@ var Searcher = class {
     }
     return bestScore;
   }
-  /** 静态搜索：只延伸吃子着法，直到局面安静 */
+  /** 静态搜索：只延伸吃子着法，直到局面安静。返回值 = 当前走子方视角（MV = sign × 红方视角） */
   quiescence(alpha, beta, sign, qdepth, deadlineHit) {
     this.nodes++;
     const standPat = sign * this.evalFn(this.board);
@@ -1171,24 +1179,36 @@ var WORKER_SRC = `
   } catch {
     workerData = (await import('node:worker_threads')).workerData;
   }
-  let ort;
-  try {
-    ort = require('onnxruntime-node');
-  } catch {
-    ort = await import('onnxruntime-node');
-  }
-  const session = await ort.InferenceSession.create(workerData.modelPath);
   const i32 = new Int32Array(workerData.sab, 0, 4);
   const input = new Float32Array(workerData.sab, 16, ${VEC_LEN});
   const output = new Float32Array(workerData.sab, 16 + ${VEC_LEN} * 4, 1);
-  i32[1] = 1; Atomics.notify(i32, 1); // ready\uFF08\u5FC5\u987B\u7528 Atomics \u5524\u9192\u4E3B\u7EBF\u7A0B\u7684 wait\uFF09
-  for (;;) {
-    Atomics.wait(i32, 0, 0);          // \u7B49\u4E3B\u7EBF\u7A0B\u53D1\u8BF7\u6C42\uFF080\u21921\uFF09
-    const t = new ort.Tensor('float32', input.slice(), [1, ${VEC_LEN}]);
-    const res = await session.run({ board: t });
-    output[0] = res['score'].data[0];
-    Atomics.store(i32, 0, 0);         // \u5904\u7406\u5B8C\u6210
-    Atomics.notify(i32, 0);
+  // \u26A0\uFE0F \u521D\u59CB\u5316\u5931\u8D25\u5FC5\u987B\u81EA\u5DF1\u5524\u9192\u4E3B\u7EBF\u7A0B\uFF1A\u4E3B\u7EBF\u7A0B\u6B63\u963B\u585E\u5728 Atomics.wait \u4E0A\uFF0C
+  //    \u5B83\u7684 worker.on('error'/'exit') \u56DE\u8C03\u8981\u7B49 wait \u8FD4\u56DE\u624D\u4F1A\u8DD1\uFF0C\u5426\u5219\u53EA\u80FD\u5E72\u7B49 30s \u8D85\u65F6\u3002
+  const fail = (e) => {
+    console.error('[nnue-w] FATAL', e);
+    i32[1] = 2;
+    Atomics.notify(i32, 1);
+    process.exit(1);
+  };
+  try {
+    let ort;
+    try {
+      ort = require('onnxruntime-node');
+    } catch {
+      ort = await import('onnxruntime-node');
+    }
+    const session = await ort.InferenceSession.create(workerData.modelPath);
+    i32[1] = 1; Atomics.notify(i32, 1); // ready\uFF08\u5FC5\u987B\u7528 Atomics \u5524\u9192\u4E3B\u7EBF\u7A0B\u7684 wait\uFF09
+    for (;;) {
+      Atomics.wait(i32, 0, 0);          // \u7B49\u4E3B\u7EBF\u7A0B\u53D1\u8BF7\u6C42\uFF080\u21921\uFF09
+      const t = new ort.Tensor('float32', input.slice(), [1, ${VEC_LEN}]);
+      const res = await session.run({ board: t });
+      output[0] = res['score'].data[0];
+      Atomics.store(i32, 0, 0);         // \u5904\u7406\u5B8C\u6210
+      Atomics.notify(i32, 0);
+    }
+  } catch (e) {
+    fail(e);
   }
 })().catch((e) => { console.error('[nnue-w] FATAL', e); process.exit(1); });
 `;
@@ -1221,7 +1241,8 @@ var NnueEvaluator = class _NnueEvaluator {
     });
     const wr = Atomics.wait(this.i32, 1, 0, 3e4);
     if (wr !== "ok" || this.i32[1] !== 1) {
-      throw new Error(`nnue worker init failed (${wr}): ${this.errMsg ?? "flag=" + this.i32[1]}`);
+      const why = this.errMsg ?? `flag=${this.i32[1]}`;
+      throw new Error(`nnue worker init failed (${wr}): ${why}\uFF08\u6A21\u578B\u8DEF\u5F84 ${modelPath}\uFF09`);
     }
   }
   /** 红方视角 cp。与 evaluate() 同约定，可直接注入 Searcher */

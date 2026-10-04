@@ -464,14 +464,15 @@ function inCheck(board, side) {
   }
   const horseDeltas = [
     // [mr-kr, mc-kc, legDr, legDc] leg 相对将位
-    [-2, -1, -1, 0],
-    [-2, 1, -1, 0],
-    [2, -1, 1, 0],
-    [2, 1, 1, 0],
-    [-1, -2, 0, -1],
-    [1, -2, 0, -1],
-    [-1, 2, 0, 1],
-    [1, 2, 0, 1]
+    // 腿在马旁边、沿长轴方向一格：竖直长跳(|dr|=2)时 leg=(dr/2, dc)，横向长跳(|dc|=2)时 leg=(dr, dc/2)
+    [-2, -1, -1, -1],
+    [-2, 1, -1, 1],
+    [2, -1, 1, -1],
+    [2, 1, 1, 1],
+    [-1, -2, -1, -1],
+    [1, -2, 1, -1],
+    [-1, 2, -1, 1],
+    [1, 2, 1, 1]
   ];
   for (const [dr, dc, lr, lc] of horseDeltas) {
     const mr = kr + dr, mc = kc + dc;
@@ -938,9 +939,12 @@ var Searcher = class {
   // "from-to" → 排序分
   /** 搜索中检出（当前走子方被将死/困毙）时由 makeMove 感知 */
   searchAborted = false;
-  constructor(board, ttMax = 1 << 18) {
+  /** 评估函数（默认子力+PST；可注入 NNUE 等），红方视角 cp */
+  evalFn;
+  constructor(board, ttMax = 1 << 18, evalFn) {
     this.board = board;
     this.ttMax = ttMax;
+    this.evalFn = evalFn ?? evaluate;
   }
   /** 清空置换表（新对局/悔棋后调用，防止跨局面污染） */
   clear() {
@@ -1004,15 +1008,23 @@ var Searcher = class {
     return { move: bestMove, score: bestScore };
   }
   /**
-   * negamax alpha-beta 主体。sign = 当前方视角系数（红+1/黑-1）。
+   * negamax alpha-beta 主体。
+   *
+   * ⚠️ 视角约定（2026-10-04 修 bug 后定稿，改动前请先读这段）：
+   *   本函数与 quiescence 的返回值一律是「当前走子方视角」（MV = sign × 红方视角），
+   *   父节点直接取负即可，绝不能再乘一次 sign。
+   *   历史 bug：叶子处写成 `sign * quiescence(...)`，而 quiescence 返回的就是 MV，
+   *   于是每个叶子被多乘了一次 sign → 奇数层整棵树变成「取最小」，根节点会挑最差着法
+   *   （实测开局 depth1 挑「炮八进八」白兑炮换马，depth3 评分 ±2884 乱跳）。
+   *   sign 只在「评估函数是红方视角」这一处使用（quiescence 的 standPat）。
    */
   alphabeta(depth, alpha, beta, sign, deadlineHit, ply) {
     this.nodes++;
     if (ply >= MAX_PLY) {
-      return sign * this.quiescence(alpha, beta, sign, 0, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 0, deadlineHit);
     }
     if (depth <= 0) {
-      return sign * this.quiescence(alpha, beta, sign, 4, deadlineHit);
+      return this.quiescence(alpha, beta, sign, 4, deadlineHit);
     }
     const key = this.board.hashKey;
     const ttEntry = this.tt.get(key);
@@ -1064,10 +1076,10 @@ var Searcher = class {
     }
     return bestScore;
   }
-  /** 静态搜索：只延伸吃子着法，直到局面安静 */
+  /** 静态搜索：只延伸吃子着法，直到局面安静。返回值 = 当前走子方视角（MV = sign × 红方视角） */
   quiescence(alpha, beta, sign, qdepth, deadlineHit) {
     this.nodes++;
-    const standPat = sign * evaluate(this.board);
+    const standPat = sign * this.evalFn(this.board);
     if (qdepth <= 0 || (this.nodes & 1023) === 0 && deadlineHit()) {
       this.searchAborted = this.searchAborted || (this.nodes & 1023) === 0 && deadlineHit();
       return standPat;
