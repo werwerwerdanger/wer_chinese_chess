@@ -55,9 +55,10 @@ http.createServer((req, res) => {
         const evalFn = (b: Board) => nn.evalBoard(b);
         const searcher = new Searcher(board, 1 << 17, evalFn);
         const t0 = performance.now();
-        // NNUE 评估 ~0.4ms/次，深搜节点爆炸（depth4 实测 20s+）；
-        // 交互场景钳制 depth≤3、时限 3s，超时返回当前最优
-        const r = searcher.search(Math.min(Math.max(1, depth | 0), 3), 3000);
+        // NNUE 评估 ~0.4ms/次（tools/distill/bench-eval.mjs），3s 内大约只能评估 7k 次，
+        // 开局通常搜到深度 2~3。所以不硬钳深度，交给「深度上限 6 + 3s 时限」自己决定：
+        // 残局分支少时能多搜几层，开局则被时间先卡住。
+        const r = searcher.search(Math.min(Math.max(1, depth | 0), 6), 3000);
         if (!r.bestMove) throw new Error('无棋可走');
         // Searcher.search 的 score 是「当前走子方视角」→ 乘 sign 统一成「红方视角」（正 = 红优）
         const sign = board.turn === 0 ? 1 : -1;

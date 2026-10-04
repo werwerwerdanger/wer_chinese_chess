@@ -1,6 +1,3 @@
-// tools/distill/nnue-serve.ts
-import http from "node:http";
-
 // engine/src/constants.ts
 var BOARD_COLS = 9;
 var BOARD_ROWS = 10;
@@ -285,74 +282,74 @@ var Board = class _Board {
 };
 
 // engine/src/movegen.ts
-function generatePseudoLegalMoves(board, side) {
+function generatePseudoLegalMoves(board2, side) {
   const moves = [];
   const opp = side ^ 1;
   for (let from = 0; from < 90; from++) {
-    const p = board.squares[from];
+    const p = board2.squares[from];
     if (p === 255 /* None */ || colorOf(p) !== side) continue;
     switch (typeOf(p)) {
       case 0 /* King */:
-        genKing(board, from, side, opp, moves);
+        genKing(board2, from, side, opp, moves);
         break;
       case 1 /* Advisor */:
-        genAdvisor(board, from, side, opp, moves);
+        genAdvisor(board2, from, side, opp, moves);
         break;
       case 2 /* Elephant */:
-        genElephant(board, from, side, opp, moves);
+        genElephant(board2, from, side, opp, moves);
         break;
       case 3 /* Horse */:
-        genHorse(board, from, side, opp, moves);
+        genHorse(board2, from, side, opp, moves);
         break;
       case 4 /* Rook */:
-        genRook(board, from, side, opp, moves);
+        genRook(board2, from, side, opp, moves);
         break;
       case 5 /* Cannon */:
-        genCannon(board, from, side, opp, moves);
+        genCannon(board2, from, side, opp, moves);
         break;
       case 6 /* Pawn */:
-        genPawn(board, from, side, opp, moves);
+        genPawn(board2, from, side, opp, moves);
         break;
     }
   }
   return moves;
 }
-function pushMove(board, from, to, opp, moves) {
-  const target = board.squares[to];
+function pushMove(board2, from, to, opp, moves) {
+  const target = board2.squares[to];
   if (target === 255 /* None */ || colorOf(target) === opp) {
     moves.push({ from, to, captured: target });
   }
 }
-function genKing(board, from, side, opp, moves) {
+function genKing(board2, from, side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!inPalace(nr, nc, side)) continue;
-    pushMove(board, from, sq(nr, nc), opp, moves);
+    pushMove(board2, from, sq(nr, nc), opp, moves);
   }
 }
-function genAdvisor(board, from, side, opp, moves) {
+function genAdvisor(board2, from, side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   const deltas = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!inPalace(nr, nc, side)) continue;
-    pushMove(board, from, sq(nr, nc), opp, moves);
+    pushMove(board2, from, sq(nr, nc), opp, moves);
   }
 }
-function genElephant(board, from, side, opp, moves) {
+function genElephant(board2, from, side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   const deltas = [[-2, -2], [-2, 2], [2, -2], [2, 2]];
   for (const [dr, dc] of deltas) {
     const nr = r + dr, nc = c + dc;
     if (!onBoard(nr, nc)) continue;
     if (!elephantZone(nr, side)) continue;
-    if (board.squares[sq(r + dr / 2, c + dc / 2)] !== 255 /* None */) continue;
-    pushMove(board, from, sq(nr, nc), opp, moves);
+    if (board2.squares[sq(r + dr / 2, c + dc / 2)] !== 255 /* None */) continue;
+    pushMove(board2, from, sq(nr, nc), opp, moves);
   }
 }
-function genHorse(board, from, _side, opp, moves) {
+function genHorse(board2, from, _side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   const table = [
     [-2, -1, -1, 0],
@@ -367,16 +364,16 @@ function genHorse(board, from, _side, opp, moves) {
   for (const [dr, dc, lr, lc] of table) {
     const nr = r + dr, nc = c + dc;
     if (!onBoard(nr, nc)) continue;
-    if (board.squares[sq(r + lr, c + lc)] !== 255 /* None */) continue;
-    pushMove(board, from, sq(nr, nc), opp, moves);
+    if (board2.squares[sq(r + lr, c + lc)] !== 255 /* None */) continue;
+    pushMove(board2, from, sq(nr, nc), opp, moves);
   }
 }
-function genRook(board, from, _side, opp, moves) {
+function genRook(board2, from, _side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
     let nr = r + dr, nc = c + dc;
     while (onBoard(nr, nc)) {
-      const target = board.squares[sq(nr, nc)];
+      const target = board2.squares[sq(nr, nc)];
       if (target === 255 /* None */) {
         moves.push({ from, to: sq(nr, nc), captured: 255 /* None */ });
       } else {
@@ -388,11 +385,11 @@ function genRook(board, from, _side, opp, moves) {
     }
   }
 }
-function genCannon(board, from, _side, opp, moves) {
+function genCannon(board2, from, _side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
     let nr = r + dr, nc = c + dc;
-    while (onBoard(nr, nc) && board.squares[sq(nr, nc)] === 255 /* None */) {
+    while (onBoard(nr, nc) && board2.squares[sq(nr, nc)] === 255 /* None */) {
       moves.push({ from, to: sq(nr, nc), captured: 255 /* None */ });
       nr += dr;
       nc += dc;
@@ -400,7 +397,7 @@ function genCannon(board, from, _side, opp, moves) {
     nr += dr;
     nc += dc;
     while (onBoard(nr, nc)) {
-      const target = board.squares[sq(nr, nc)];
+      const target = board2.squares[sq(nr, nc)];
       if (target !== 255 /* None */) {
         if (colorOf(target) === opp) moves.push({ from, to: sq(nr, nc), captured: target });
         break;
@@ -410,20 +407,20 @@ function genCannon(board, from, _side, opp, moves) {
     }
   }
 }
-function genPawn(board, from, side, opp, moves) {
+function genPawn(board2, from, side, opp, moves) {
   const r = rowOf(from), c = colOf(from);
   const forward = side === 0 /* Red */ ? -1 : 1;
   const nr = r + forward;
-  if (onBoard(nr, c)) pushMove(board, from, sq(nr, c), opp, moves);
+  if (onBoard(nr, c)) pushMove(board2, from, sq(nr, c), opp, moves);
   if (pawnCrossed(r, side)) {
-    if (c - 1 >= 0) pushMove(board, from, sq(r, c - 1), opp, moves);
-    if (c + 1 < BOARD_COLS) pushMove(board, from, sq(r, c + 1), opp, moves);
+    if (c - 1 >= 0) pushMove(board2, from, sq(r, c - 1), opp, moves);
+    if (c + 1 < BOARD_COLS) pushMove(board2, from, sq(r, c + 1), opp, moves);
   }
 }
 
 // engine/src/legality.ts
-function inCheck(board, side) {
-  const kingSq = board.kingSquare[side];
+function inCheck(board2, side) {
+  const kingSq = board2.kingSquare[side];
   if (kingSq < 0) return true;
   const kr = rowOf(kingSq), kc = colOf(kingSq);
   const opp = side ^ 1;
@@ -432,7 +429,7 @@ function inCheck(board, side) {
     let firstPiece = 255 /* None */;
     let firstR = -1, firstC = -1;
     while (onBoard(r, c)) {
-      const p = board.squares[sq(r, c)];
+      const p = board2.squares[sq(r, c)];
       if (p !== 255 /* None */) {
         firstPiece = p;
         firstR = r;
@@ -456,7 +453,7 @@ function inCheck(board, side) {
     r = firstR + dr;
     c = firstC + dc;
     while (onBoard(r, c)) {
-      const p = board.squares[sq(r, c)];
+      const p = board2.squares[sq(r, c)];
       if (p !== 255 /* None */) {
         if (colorOf(p) === opp && typeOf(p) === 5 /* Cannon */) return true;
         break;
@@ -480,23 +477,82 @@ function inCheck(board, side) {
   for (const [dr, dc, lr, lc] of horseDeltas) {
     const mr = kr + dr, mc = kc + dc;
     if (!onBoard(mr, mc)) continue;
-    const p = board.squares[sq(mr, mc)];
+    const p = board2.squares[sq(mr, mc)];
     if (p === 255 /* None */ || colorOf(p) !== opp) continue;
     if (typeOf(p) !== 3 /* Horse */) continue;
     const legR = kr + lr, legC = kc + lc;
-    if (board.squares[sq(legR, legC)] === 255 /* None */) return true;
+    if (board2.squares[sq(legR, legC)] === 255 /* None */) return true;
   }
   return false;
 }
-function generateLegalMoves(board, side) {
-  const pseudo = generatePseudoLegalMoves(board, side);
+function generateLegalMoves(board2, side) {
+  const pseudo = generatePseudoLegalMoves(board2, side);
   const legal = [];
   for (const m of pseudo) {
-    const undo = board.makeMove(m);
-    if (!inCheck(board, side) && !board.kingsFacing()) legal.push(m);
-    board.unmakeMove(m, undo);
+    const undo = board2.makeMove(m);
+    if (!inCheck(board2, side) && !board2.kingsFacing()) legal.push(m);
+    board2.unmakeMove(m, undo);
   }
   return legal;
+}
+
+// engine/src/notation.ts
+var RED_NUMS = ["\u4E5D", "\u516B", "\u4E03", "\u516D", "\u4E94", "\u56DB", "\u4E09", "\u4E8C", "\u4E00"];
+var BLACK_NUMS = ["9", "8", "7", "6", "5", "4", "3", "2", "1"];
+function fileChar(col, color) {
+  return color === 0 /* Red */ ? RED_NUMS[col] : BLACK_NUMS[col];
+}
+function moveToChinese(board2, move) {
+  const piece = board2.at(move.from);
+  if (piece === 255 /* None */) return "??";
+  const color = piece >> 3 & 1;
+  const name = PIECE_NAMES[piece];
+  const fromR = rowOf(move.from), fromC = colOf(move.from);
+  const toR = rowOf(move.to), toC = colOf(move.to);
+  const disambig = needsDisambiguation(board2, move.from, piece);
+  let action;
+  let dest;
+  if (fromC === toC) {
+    const forward = color === 0 /* Red */ ? -1 : 1;
+    const steps = Math.abs(toR - fromR);
+    action = (toR - fromR) * forward > 0 ? "\u8FDB" : "\u9000";
+    const redSteps = ["\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D"];
+    const s = color === 0 /* Red */ ? redSteps[steps - 1] ?? String(steps) : String(steps);
+    return `${prefix(disambig, name)}${fileChar(fromC, color)}${action}${s}`;
+  }
+  if (fromR === toR) {
+    action = "\u5E73";
+    dest = fileChar(toC, color);
+  } else {
+    const forward = color === 0 /* Red */ ? -1 : 1;
+    action = (toR - fromR) * forward > 0 ? "\u8FDB" : "\u9000";
+    dest = fileChar(toC, color);
+  }
+  return `${prefix(disambig, name)}${fileChar(fromC, color)}${action}${dest}`;
+  function prefix(d, n) {
+    if (d === "front") return `\u524D${n}`;
+    if (d === "back") return `\u540E${n}`;
+    return n;
+  }
+}
+function needsDisambiguation(board2, from, piece) {
+  const color = piece >> 3 & 1;
+  void typeOf(piece);
+  const fromR = rowOf(from), fromC = colOf(from);
+  let other = -1;
+  for (let r = 0; r < 10; r++) {
+    const s = sq(r, fromC);
+    if (s === from) continue;
+    if (board2.at(s) === piece) {
+      other = s;
+      break;
+    }
+  }
+  if (other < 0) return null;
+  if (typeOf(piece) === 6 && !pawnCrossed(fromR, color)) return null;
+  const forward = color === 0 /* Red */ ? -1 : 1;
+  const otherR = rowOf(other);
+  return (fromR - otherR) * forward > 0 ? "front" : "back";
 }
 
 // engine-ai/src/eval.ts
@@ -898,9 +954,9 @@ var PST = [
   PST_CANNON,
   PST_PAWN
 ];
-function evaluate(board) {
+function evaluate(board2) {
   let score = 0;
-  const squares = board.squares;
+  const squares = board2.squares;
   for (let i = 0; i < 90; i++) {
     const p = squares[i];
     if (p === 255) continue;
@@ -936,10 +992,10 @@ var Searcher = class {
   searchAborted = false;
   /** 评估函数（默认子力+PST；可注入 NNUE 等），红方视角 cp */
   evalFn;
-  constructor(board, ttMax = 1 << 18, evalFn) {
-    this.board = board;
+  constructor(board2, ttMax = 1 << 18, evalFn2) {
+    this.board = board2;
     this.ttMax = ttMax;
-    this.evalFn = evalFn ?? evaluate;
+    this.evalFn = evalFn2 ?? evaluate;
   }
   /** 清空置换表（新对局/悔棋后调用，防止跨局面污染） */
   clear() {
@@ -1013,9 +1069,9 @@ var Searcher = class {
    *   （实测开局 depth1 挑「炮八进八」白兑炮换马，depth3 评分 ±2884 乱跳）。
    *   sign 只在「评估函数是红方视角」这一处使用（quiescence 的 standPat）。
    */
-  alphabeta(depth, alpha, beta, sign, deadlineHit, ply) {
+  alphabeta(depth, alpha, beta, sign, deadlineHit, ply2) {
     this.nodes++;
-    if (ply >= MAX_PLY) {
+    if (ply2 >= MAX_PLY) {
       return this.quiescence(alpha, beta, sign, 0, deadlineHit);
     }
     if (depth <= 0) {
@@ -1029,7 +1085,7 @@ var Searcher = class {
       if (ttEntry.flag === 2 /* Upper */ && ttEntry.score <= alpha) return ttEntry.score;
     }
     const checked = inCheck(this.board, this.board.turn);
-    if (checked && depth < 3 && ply < MAX_PLY - 8) depth++;
+    if (checked && depth < 3 && ply2 < MAX_PLY - 8) depth++;
     const moves = this.orderedMoves(ttEntry?.bestMove);
     let bestScore = -Infinity;
     let bestMove = NO_MOVE;
@@ -1045,7 +1101,7 @@ var Searcher = class {
       if (this.noMovesFor(this.board.turn)) {
         score = MATE_SCORE - depth;
       } else {
-        score = -this.alphabeta(depth - 1, -beta, -alpha, -sign, deadlineHit, ply + 1);
+        score = -this.alphabeta(depth - 1, -beta, -alpha, -sign, deadlineHit, ply2 + 1);
       }
       this.board.unmakeMove(m, undo);
       searched++;
@@ -1253,11 +1309,11 @@ var NnueEvaluator = class _NnueEvaluator {
     }
   }
   /** 红方视角 cp。与 evaluate() 同约定，可直接注入 Searcher */
-  evalBoard(board) {
-    const key = board.hashKey;
+  evalBoard(board2) {
+    const key = board2.hashKey;
     const hit = this.cache.get(key);
     if (hit !== void 0) return hit;
-    encodeFenInto(board.toFen(), this.input);
+    encodeFenInto(board2.toFen(), this.input);
     this.evalCount++;
     Atomics.store(this.i32, 0, 1);
     Atomics.notify(this.i32, 0, 1);
@@ -1283,73 +1339,45 @@ var NnueEvaluator = class _NnueEvaluator {
   }
 };
 
-// tools/distill/nnue-serve.ts
+// tools/distill/showplay.ts
 var argv = process.argv.slice(2);
 var get = (k, d) => {
   const i = argv.indexOf(`--${k}`);
   return i >= 0 && argv[i + 1] !== void 0 ? argv[i + 1] : d;
 };
-var MODEL = get("model", "data/model.onnx");
-var PORT = Number(get("port", "8789"));
-function sqToUci(sq2) {
-  const row = Math.floor(sq2 / 9), col = sq2 % 9;
-  return `${String.fromCharCode(97 + col)}${9 - row}`;
+var MODEL = get("model", "data/model-best.onnx");
+var USE_NNUE = !argv.includes("--no-nnue");
+var DEPTH = Number(get("depth", "3"));
+var TIME = Number(get("time", "3000"));
+var PLIES = Number(get("plies", "40"));
+var FEN = get("fen", "");
+var nn = USE_NNUE ? new NnueEvaluator(MODEL) : null;
+var evalFn = nn ? (b) => nn.evalBoard(b) : evaluate;
+var board = FEN ? new Board(FEN) : new Board();
+console.log(`[showplay] \u8BC4\u4F30=${USE_NNUE ? `NNUE(${MODEL})` : "\u5B50\u529B+PST"}  depth=${DEPTH} time=${TIME}ms  plies=${PLIES}`);
+console.log(`[showplay] \u8D77\u59CB ${board.toFen()}
+`);
+var ply = 0;
+for (; ply < PLIES; ply++) {
+  const legal = generateLegalMoves(board, board.turn);
+  if (!legal.length) {
+    console.log(`[showplay] ${board.turn === 0 ? "\u7EA2" : "\u9ED1"}\u65B9\u65E0\u68CB\u53EF\u8D70 \u2192 ${board.turn === 0 ? "\u9ED1\u80DC" : "\u7EA2\u80DC"}`);
+    break;
+  }
+  const searcher = new Searcher(board, 1 << 17, evalFn);
+  const r = searcher.search(DEPTH, TIME);
+  if (!r.bestMove) break;
+  const mv = r.bestMove;
+  const staticRed = evalFn(board);
+  const searchRed = r.score * (board.turn === 0 ? 1 : -1);
+  const side = board.turn === 0 ? "\u7EA2" : "\u9ED1";
+  console.log(
+    `#${String(ply + 1).padStart(3)} ${side} ${moveToChinese(board, mv).padEnd(8)} | \u641C\u7D22 ${searchRed >= 0 ? "+" : ""}${searchRed.toFixed(0)}(\u7EA2\u65B9\u89C6\u89D2) | \u9759\u6001 ${staticRed >= 0 ? "+" : ""}${staticRed.toFixed(0)} | \u6DF1\u5EA6 ${r.depth} \u8282\u70B9 ${r.nodes} ${r.timeMs}ms`
+  );
+  board.makeMove(mv);
 }
-var nn = new NnueEvaluator(MODEL);
-http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-  if (req.method === "GET" && req.url === "/ping") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, name: `NNUE serve (${MODEL})` }));
-    return;
-  }
-  if (req.method === "POST" && req.url === "/think") {
-    let body = "";
-    req.on("data", (c) => {
-      body += c;
-    });
-    req.on("end", () => {
-      try {
-        const { fen, depth } = JSON.parse(body);
-        if (!fen || !Number.isFinite(depth)) throw new Error("bad request");
-        const board = new Board(fen);
-        const evalFn = (b) => nn.evalBoard(b);
-        const searcher = new Searcher(board, 1 << 17, evalFn);
-        const t0 = performance.now();
-        const r = searcher.search(Math.min(Math.max(1, depth | 0), 6), 3e3);
-        if (!r.bestMove) throw new Error("\u65E0\u68CB\u53EF\u8D70");
-        const sign = board.turn === 0 ? 1 : -1;
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          move: `${sqToUci(r.bestMove.from)}${sqToUci(r.bestMove.to)}`,
-          score: r.score * sign,
-          depth: r.depth,
-          nodes: r.nodes,
-          timeMs: Math.round(performance.now() - t0)
-        }));
-      } catch (err) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: String(err.message ?? err) }));
-      }
-    });
-    return;
-  }
-  res.writeHead(404);
-  res.end();
-}).listen(PORT, "127.0.0.1", () => {
-  console.log(`[nnue-serve] model=${MODEL}  listening on http://127.0.0.1:${PORT}`);
-  console.log(`[nnue-serve] \u5408\u6CD5\u8D70\u6CD5\u515C\u5E95\u6821\u9A8C\u7531\u524D\u7AEF\u5B8C\u6210\uFF08generateLegalMoves\uFF09`);
-});
-function legalCount(fen) {
-  return generateLegalMoves(new Board(fen), new Board(fen).turn).length;
-}
-export {
-  legalCount
-};
+console.log(`
+[showplay] \u7ED3\u675F\u5C40\u9762 ${board.toFen()}`);
+console.log("[showplay] \u63D0\u793A\uFF1A\u9759\u6001\u5206\uFF08\u7EA2\u65B9\u89C6\u89D2\uFF09\u5927\u5E45\u504F\u79BB 0 \u800C\u7740\u6CD5\u770B\u7740\u6CA1\u9053\u7406\u65F6\uFF0C\u662F\u8BC4\u4F30\u51FD\u6570\u7684\u76F2\u70B9\uFF1B");
+console.log("           \u641C\u7D22\u5206\u4E0E\u9759\u6001\u5206\u5728\u540C\u4E00\u5C40\u9762\u5DEE\u5F88\u591A\uFF0C\u624D\u662F\u641C\u7D22\u5C42\u7684\u95EE\u9898\u3002");
+nn?.dispose();

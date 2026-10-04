@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $repoRoot
 
-$targets = @('match', 'selfplay', 'nnue-serve', 'smoke-nnue', 'pgn-ingest', 'datagen')
+$targets = @('match', 'selfplay', 'nnue-serve', 'smoke-nnue', 'pgn-ingest', 'datagen', 'showplay')
 $esbuild = Join-Path $repoRoot 'node_modules\.bin\esbuild.cmd'
 if (-not (Test-Path $esbuild)) { throw "esbuild not found at $esbuild - run 'npm install' first" }
 

@@ -1154,6 +1154,7 @@ var VEC_LEN = 90 * 14 + 1;
 var HEAD_I32 = 4;
 var SAB_BYTES = HEAD_I32 * 4 + VEC_LEN * 4 + 4;
 function encodeFenInto(fen, out) {
+  out.fill(0);
   const parts = fen.split(" ");
   const rows = parts[0].split("/");
   if (rows.length !== 10) throw new Error(`bad fen rows: ${fen}`);
@@ -1200,6 +1201,9 @@ var WORKER_SRC = `
     } catch {
       ort = await import('onnxruntime-node');
     }
+    // \u5B9E\u6D4B\u541E\u5410\uFF08tools/distill/bench-eval.mjs\uFF0C1500 \u4E2A\u4E0D\u540C\u5C40\u9762\uFF09\uFF1A0.39ms/\u6B21 \u2248 2500 \u6B21/\u79D2\u3002
+    // \u8BD5\u8FC7 intraOpNumThreads:1 + sequential\uFF0C\u53CD\u800C\u66F4\u6162\uFF080.50ms/\u6B21\uFF09\u2192 \u4FDD\u6301 ORT \u9ED8\u8BA4\u3002
+    // 3s \u601D\u8003\u65F6\u95F4 \u2248 \u53EA\u80FD\u8BC4\u4F30 7k \u6B21 \u2192 \u5F00\u5C40\u5927\u7EA6\u641C\u5230\u6DF1\u5EA6 2~3\uFF0C\u8FD9\u662F\u5F53\u524D"\u68CB\u529B\u5929\u82B1\u677F"\u7684\u4E3B\u56E0\u3002
     const session = await ort.InferenceSession.create(workerData.modelPath);
     i32[1] = 1; Atomics.notify(i32, 1); // ready\uFF08\u5FC5\u987B\u7528 Atomics \u5524\u9192\u4E3B\u7EBF\u7A0B\u7684 wait\uFF09
     for (;;) {

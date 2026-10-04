@@ -29,8 +29,14 @@ export function encodeFen(fen: string): Float32Array {
   return out;
 }
 
-/** 同上，但写入调用方提供的数组（热路径零分配） */
+/** 同上，但写入调用方提供的数组（热路径零分配）
+ *
+ *  ⚠️ 必须先把 out 清零：搜索时复用同一个 buffer，若只写 1 不写 0，
+ *     新局面的向量里会残留上一个局面的棋子 → 模型看到的是"叠加局面"（实测把开局评成 -1754）。
+ *     历史 bug 见 docs/devlog/m4c-nnue-input-buffer-bug.md。
+ */
 export function encodeFenInto(fen: string, out: Float32Array): void {
+  out.fill(0);
   const parts = fen.split(' ');
   const rows = parts[0]!.split('/');
   if (rows.length !== 10) throw new Error(`bad fen rows: ${fen}`);
@@ -78,6 +84,9 @@ const WORKER_SRC = `
     } catch {
       ort = await import('onnxruntime-node');
     }
+    // 实测吞吐（tools/distill/bench-eval.mjs，1500 个不同局面）：0.39ms/次 ≈ 2500 次/秒。
+    // 试过 intraOpNumThreads:1 + sequential，反而更慢（0.50ms/次）→ 保持 ORT 默认。
+    // 3s 思考时间 ≈ 只能评估 7k 次 → 开局大约搜到深度 2~3，这是当前"棋力天花板"的主因。
     const session = await ort.InferenceSession.create(workerData.modelPath);
     i32[1] = 1; Atomics.notify(i32, 1); // ready（必须用 Atomics 唤醒主线程的 wait）
     for (;;) {

@@ -77,6 +77,14 @@ adapter 里乘 `sign`（红+1/黑-1）才变成「红方视角」。历史 bug �
 根节点专挑最差着法（开局 depth1 会主动白兑炮换马、评分随深度正负跳变）。
 `engine-ai/tests/search.test.ts` 已有回归测试钉死。
 
+⚠️ **NNUE 输入向量必须清零（踩过坑）**：`NnueEvaluator.evalBoard` 复用同一个 1261 维 buffer，
+`encodeFenInto` 只写 1 不写 0 → 新局面的向量里残留上一个局面的棋子，模型看到"叠加局面"
+（开局被评成 −1754、搜索里除首次之外全是垃圾）。见 `docs/devlog/m4c-nnue-input-buffer-bug.md`；
+`engine-ai/tests/nnue.test.ts`「评估结果与评估历史无关」用例钉死。
+
+排障工具箱（都在 `tools/distill/`）：`showplay.mjs`（把 AI 实际下的棋逐步打出来）、
+`probe-eval.mjs`（换模型体检）、`bench-eval.mjs`（评估吞吐基准）、`evolve-plot.mjs`（进化曲线）。
+
 
 ## 里程碑
 
