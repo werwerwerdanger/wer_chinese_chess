@@ -1,0 +1,44 @@
+# 编码金标准：每行 <FEN> ; <sha256(1261 维 float32 向量) 前 32 位>
+# 由 engine-ai/src/nnue.ts 的 encodeFen 生成，是编码约定的唯一权威。
+# 校验：python tools/distill/check-encoding.py
+# 重新生成：把下面这段存成 tools/distill/gen-golden.mjs，然后
+#   node --experimental-strip-types tools/distill/gen-golden.mjs <fens.txt> > tools/distill/tests/encoding-golden.txt
+#   ---
+#   import { encodeFen } from '../../engine-ai/src/nnue.ts';
+#   import { readFileSync } from 'node:fs';
+#   import { createHash } from 'node:crypto';
+#   for (const f of readFileSync(process.argv[2], 'utf8').split('\n').map(s => s.trim()).filter(Boolean)) {
+#     const v = encodeFen(f);
+#     console.log(f + ' ; ' + createHash('sha256').update(Buffer.from(v.buffer)).digest('hex').slice(0, 32));
+#   }
+#   ---
+4kab2/4a4/2R1b1P2/9/p3p4/5p3/P3P1c2/N2Cr4/4A4/3AK4 b ; e996f4797f6036f219b4caefb3008e8b
+1rb1kab2/9/4ra3/p1R2N2p/9/2P2n3/Pc6P/3CB4/4A1c2/1RNAK1B2 w ; d3864f2e5959727b34ac2c4b0d4b3c91
+2bakab2/3Rn4/4c4/p3p3p/5nr2/2P4r1/P3P1c1P/N1C1C1N2/4A4/2B1KAB1R b ; f145b7da3c7c44b62929d9a26dfc2596
+3ak1b2/4aR3/C1r1b1ncr/7R1/6p1p/4C4/P3P1c1P/6N2/9/3AKAB2 w ; 87c52009516f5a64933a1ecd2fef9def
+2bak3r/4a4/2n1b1c2/C1p1PC2p/9/7R1/P1c1p3P/4B3N/9/2BAKA3 w ; c4727a98e41c862fc5a0c5a36a3babfc
+2baka3/9/4b4/p7p/2P6/3C1p3/3nP1c1P/4B4/4Ac2N/2C1KAB2 w ; 27d8208660aecd464262dc37e3d73950
+2Ca1a1r1/1R7/5k3/4p3p/5nrc1/1N5R1/2P1P3P/4B4/4K4/3A5 w ; a7f1d7acb2c92aae23e794fc607861f8
+2bak3c/4a4/nc2b1n2/2N1p3p/p5p2/2P2R2P/P3P1r2/1C1NBC3/4A4/2B1KA3 b ; 88b958a8da7d2845f6019ef6f8aec7ad
+2baka3/9/2n1c3b/p3p3p/9/2B1P1P2/P3N1c1P/1Cn1C4/4A4/4KAB2 w ; 6d47b5d61c4657d0e5fe631bc80ebfc6
+2Rakab2/9/4n1n2/2p3p1p/4R4/6r2/P7P/9/4A4/4KAB2 b ; 559f5f9c0cbc9504934f363ece2e866f
+2b1ka3/4a4/b8/9/9/4N4/1c6r/9/4A4/2RA1K3 b ; aaff775d693df992ae691e459d223743
+r1bakab2/9/c1n1c1n2/p2Rp1p1p/2p4r1/6P2/P1P1P3P/1CN1C1N2/R8/2BAKAB2 b ; f14b63d4061cb7f729e9ec9adf2321ed
+1r1nkab2/6c2/4ba3/p1P5p/6p2/P3p4/4N1n1P/N1C1C4/1c2A4/1RBA1KB2 w ; a54ee396cf66d99c01f7e8f7e0ef5241
+2bRka3/9/9/4C4/4r4/2P6/6p2/4B4/9/2BK5 b ; 1e55c8be9efe2bbe8c304d6355a29092
+1r2kab2/3Pa4/3cb4/p5p1n/4C2r1/2RRP4/P5P2/N3B4/9/2BAKA3 b ; 756537d6c25f6f3e97ffc24188f5b84d
+1n2kab2/4a4/4b1c2/p3p3p/5R3/P3P2rC/2P1N3P/N3B4/9/3AKABn1 w ; ac6b634d622677293282ed7b9d8853f1
+r2akab2/5r3/1cn1b1n1c/p1p1p3p/6p2/1CPN3R1/P3P1P1P/3C2N2/9/R1BAKAB2 b ; 3d0cc6a20a382d502d0fbe04a2416ef8
+2bak2r1/4a4/1cn1b1n2/p3p1p1p/2p2r3/3R2P2/P1P1P2cP/NC2B1N2/7R1/2BAKAC2 b ; 3f8b5818bfded1b088bc89f9163c1512
+r1bakabC1/8r/1cn4c1/p1p1p1p1p/9/6P2/P1P1P3P/3C5/9/RNBAKABNR w ; b0be7d1fb3333782ab406d1653a6c0de
+2b1kabnr/r3a4/2n6/p1p6/4p1p2/P8/c3P4/B8/9/3AK3p w ; 1b0efa00ca3e17626c688549d76e9cc8
+2b2abcr/r3akn2/2n6/p1p1p1p1p/9/2P1c4/8P/2N1K3C/9/2BA1ABNR b ; c837ce6634b7d8b7825f374aeccbc413
+1nbakabnr/r8/9/p1p1p1p1p/9/P8/2P1c1P1P/3CB4/4A2c1/RN2KABNR b ; 1b5046b98d2fc594844d91bd014be243
+rnb1kab2/1c2a4/4c3n/2p1p1p2/p7p/4P4/9/4K4/9/3r1A3 b ; f8073a19048eb359f8313fcd971bb4b8
+1nb1ka1nr/r8/4ba3/p1p1p1p1p/9/P1P2c2P/4P4/9/4K4/2B4c1 w ; d678049853b0ac2543dc19edb7c34c25
+4kabnr/4a4/4b4/P1p3p2/8p/2P3B2/6Pn1/cc2K3B/8r/9 w ; 432440e0ea403f747d51d165aa7cb584
+2bakab2/9/2n1c1n2/2p1p1p1p/p5P2/8P/r3P4/4B4/4A1r2/2B2K3 b ; 80b2b787fe4cc6093962a93b7ea237e3
+rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w ; 15674952d2a0d967f33c7e60d857e335
+rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b ; 3dda77b8438c938eb4ad9725ff8e6137
+3k5/9/9/9/9/9/9/9/4A4/4K4 w ; ea971ae7cf28f752b524139186e37f61
+3k5/9/9/9/9/9/9/9/4A4/4K4 b ; 06aebfe2413d7229d16ec5383e6a8f36

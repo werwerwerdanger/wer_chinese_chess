@@ -59,10 +59,23 @@ Pikafish 当教师、小 MLP 当学生的迭代蒸馏管线（详见 `docs/devlo
 
 ```powershell
 .\tools\distill\run-all.ps1                 # 一键：起桥 → 解压 → 标注 → 迭代闭环
+.\tools\distill\train-big.ps1               # 大数据一次训练（不解压/不迭代，直接训到 model-big.onnx）
+node tools/distill/accept.mjs --model 新.onnx # ★ 上线前验收闸门（只读）
 node tools/distill/evolve-plot.mjs --out fig.html --md summary.md   # 进化曲线
 node tools/distill/probe-eval.mjs --compare 新.onnx 旧.onnx         # 换模型前的体检
+node tools/distill/probe-eval.mjs --model 新.onnx --mae data/labeled-web.txt --n 6000  # 教师一致率
 node tools/distill/match.mjs --model 新.onnx --opp nnue --model2 旧.onnx --games 20
+python tools/distill/check-encoding.py      # 编码一致性护栏（对 nnue.ts 金标准）
 ```
+
+⚠️ **新模型上线必须过 `accept.mjs` 闸门**。它按顺序查五层：① 编码一致性 ② engine-ai 单测
+③ 体检探针（子力方向 / 镜像对称 / 输出饱和）④ **教师一致率 MAE / r** ⑤ 对打（可选）。
+判 `PASS` / `REJECT_CHAIN`（链路坏了，先修代码）/ `REJECT_MODEL`；脚本只读，不会动 `model-best`。
+
+顺序为什么不能换：m4b / m4c 两次事故都表现为"模型看着没病、下出来全是废棋"，而对打用的是
+**同一条坏链路**（两边一起坏 → 反而打成平手），根本发现不了。**主判据是 ④ 的教师一致率**，
+不是对打 —— 对打分辨力很低（两个 NNUE 互掐常见大面积和棋，40 局对 50% 得分率的 95%
+置信区间约 ±250 Elo），此前正是它让人误判「63 代无增益」。
 
 ⚠️ **改了 `engine/src`、`engine-ai/src` 或 `tools/distill/*.ts` 之后必须重新打包**，
 否则跑的还是旧代码。打包参数已固定在脚本里：
@@ -83,7 +96,12 @@ adapter 里乘 `sign`（红+1/黑-1）才变成「红方视角」。历史 bug �
 `engine-ai/tests/nnue.test.ts`「评估结果与评估历史无关」用例钉死。
 
 排障工具箱（都在 `tools/distill/`）：`showplay.mjs`（把 AI 实际下的棋逐步打出来）、
-`probe-eval.mjs`（换模型体检）、`bench-eval.mjs`（评估吞吐基准）、`evolve-plot.mjs`（进化曲线）。
+`probe-eval.mjs`（换模型体检 + `--mae` 教师一致率）、`bench-eval.mjs`（评估吞吐基准）、
+`evolve-plot.mjs`（进化曲线）、`accept.mjs`（验收闸门）、`check-encoding.py`（编码护栏）。
+
+⚠️ **`probe-eval.mjs --mae` 必须排除将杀分 `|cp| >= 9000`**（脚本已内置）：模型末层是 tanh，
+`cp = atanh(tanh)*1000` 的上限只有 ±6103，追不上 ±10000；混进去后 RMSE 被这 2~6% 的局面
+主导（实测 5389，看着像模型彻底废了，实际上 99% 的局面上只差几百 cp）。
 
 
 ## 里程碑

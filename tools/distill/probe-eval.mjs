@@ -47,14 +47,23 @@ async function evalFen(session, fen) {
 }
 
 // name = [FEN, 期望（红方视角的大致倾向）]
+// ⚠️ 2026-10-05 修正：原「红多一车 / 黑多一车」两条用例的 FEN 其实分别是
+//   「红少一车 / 黑少一车」（底线 RNBAKABN1 比初始 RNBAKABNR 少一个车），
+//   标签与局面相反 → 一个完全正常的模型会被读成"符号反了"。
+//   现已按局面实情重命名，并补上真正的「多一车」。
+// 带「(镜像)」的用例与上一行互为「上下翻转 + 红黑互换 + 行棋方互换」。
+//   训练时开了颜色镜像增广，所以完全对称的网络应给出**严格相反数**，
+//   绝对值对不上就说明符号/对称性还有问题（m4b/m4c 那两次就是这类 bug）。
 const CASES = [
   ['开局(红走)', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'],
   ['开局(黑走)', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1'],
-  ['红多一车', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABN1 w - - 0 1'],
-  ['黑多一车', '1nbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'],
-  ['红多一马', 'rnbakabn1/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'],
+  ['红多一车', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/R8/RNBAKABNR w - - 0 1'],
+  ['黑多一车(镜像)', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/r8/RNBAKABNR b - - 0 1'],
+  ['红少一车', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABN1 w - - 0 1'],
+  ['黑少一车(镜像)', 'rnbakabn1/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1'],
+  ['红少一马', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/R1BAKABNR w - - 0 1'],
   ['红多一炮', 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C2C1/9/RNBAKABNR w - - 0 1'],
-  ['黑多一炮', 'rnbakabnr/9/1c2c2c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'],
+  ['黑多一炮(镜像)', 'rnbakabnr/9/1c2c2c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1'],
   ['红兵过河(小优)', 'rnbakabnr/9/1c5c1/p1p1p1p1p/4P4/P1P1P1P1P/9/1C5C1/9/RNBAKABNR w - - 0 1'],
 ];
 
@@ -81,17 +90,25 @@ for (const m of models) {
 }
 
 const cases = extraFens.length ? extraFens : CASES;
-console.log('位置'.padEnd(16) + sessions.map((s) => s.name.padEnd(26)).join(''));
+// --json：给 accept.mjs 用的结构化输出（解析文本表格太脆）
+const asJson = argv.includes('--json');
+const table = {}; // { 模型路径: { 用例名: cp } }
+if (!asJson) console.log('位置'.padEnd(16) + sessions.map((s) => s.name.padEnd(26)).join(''));
 for (const [label, fen] of cases) {
-  const line = [label.padEnd(16)];
+  const cps = [];
   for (const s of sessions) {
     const cp = await evalFen(s.sess, fen);
-    line.push(`${cp.toFixed(1)} cp`.padEnd(26));
+    cps.push(cp);
+    (table[s.name] ??= {})[label] = Number(cp.toFixed(1));
   }
-  console.log(line.join(''));
-  if (extraFens.length) console.log('    ' + fen);
+  if (!asJson) {
+    const line = [label.padEnd(16)];
+    for (const cp of cps) line.push(`${cp.toFixed(1)} cp`.padEnd(26));
+    console.log(line.join(''));
+    if (extraFens.length) console.log('    ' + fen);
+  }
 }
-console.log('\n说明：单位是「厘兵 cp」，红方视角。开局应接近 0；红多一车应 +900 左右；黑多子应为负。');
+if (!asJson) console.log('\n说明：单位是「厘兵 cp」，红方视角。开局应接近 0；红多一车应 +900 左右；黑多子应为负。');
 
 // ---- 抽样体检：从标注文件里随机抽 N 个真实局面，看分数分布 ----
 const sampleFile = getArg('sample', '');
@@ -119,5 +136,71 @@ if (sampleFile) {
   }
   console.log('解读：平均|cp| 越小越「稳」；|cp|>1500 占比高 → 模型在真实局面上输出饱和（退化）。');
 }
+
+// ---- 教师一致率：在带标签的真实局面上量「模型评估 vs 教师分数」的误差 ----
+// 这是比"对打 N 局"分辨力高得多的验收指标：几万个局面 vs 几十局棋
+// （两个 NNUE 互掐 20 局 19 和 的教训），而且直接量蒸馏目标本身。
+const maeFile = getArg('mae', '');
+let maeReport = null;
+if (maeFile) {
+  const n = Number(getArg('n', '5000'));
+  const { readFileSync } = await import('node:fs');
+  const lines = readFileSync(maeFile, 'utf8').split('\n').filter((l) => l.trim() && !l.startsWith('#'));
+  const step = Math.max(1, Math.floor(lines.length / n));
+  const picked = [];
+  for (let i = 0; i < lines.length && picked.length < n; i += step) {
+    const t = lines[i];
+    const j = t.lastIndexOf(';');
+    if (j <= 0) continue;
+    const fen = t.slice(0, j).trim();
+    const teacher = Number(t.slice(j + 1).trim());
+    if (Number.isFinite(teacher)) picked.push([fen, teacher]);
+  }
+
+  maeReport = {};
+  // ⚠️ 必须排除将杀分（|cp| >= 9000）：模型末层是 tanh，cp = atanh(tanh)*1000 的上限
+  //    只有 ±6103，永远追不上 ±10000。混进去会让 RMSE 被这 2~6% 的局面主导，
+  //    真实棋局上的误差完全被淹没（实测不排除时 RMSE 5389，99% 的局面上其实只差几百 cp）。
+  const mates = [];
+  const plain = [];
+  for (const [fen, t] of picked) (Math.abs(t) >= 9000 ? mates : plain).push([fen, t]);
+
+  if (!asJson) {
+    console.log(`\n===== 教师一致率：${plain.length} 个带标签局面（源 ${maeFile}，共 ${lines.length} 行）=====`);
+    if (mates.length) {
+      console.log(`  （已排除 ${mates.length} 条将杀分 |cp|>=9000：模型 tanh 输出上限 ≈6103cp，表达不了）`);
+    }
+  }
+  for (const s of sessions) {
+    let sae = 0, sse = 0, sy = 0, sp = 0, syy = 0, spp = 0, syp = 0, big = 0;
+    for (const [fen, teacher] of plain) {
+      const p = await evalFen(s.sess, fen);
+      const d = p - teacher;
+      sae += Math.abs(d); sse += d * d;
+      sy += teacher; sp += p; syy += teacher * teacher; spp += p * p; syp += teacher * p;
+      if (Math.abs(d) > 500) big++;
+    }
+    const N = Math.max(1, plain.length);
+    const cov = syp / N - (sy / N) * (sp / N);
+    const sdY = Math.sqrt(Math.max(1e-9, syy / N - (sy / N) ** 2));
+    const sdP = Math.sqrt(Math.max(1e-9, spp / N - (sp / N) ** 2));
+    const rec = {
+      n: plain.length,
+      excludedMate: mates.length,
+      mae: Number((sae / N).toFixed(1)),
+      rmse: Number(Math.sqrt(sse / N).toFixed(1)),
+      r: Number((cov / (sdY * sdP)).toFixed(3)),
+      bigPct: Number(((big / N) * 100).toFixed(1)),
+    };
+    maeReport[s.name] = rec;
+    if (!asJson) {
+      console.log(`${s.name}`);
+      console.log(`  n=${rec.n} | MAE ${rec.mae} cp | RMSE ${rec.rmse} | 相关系数 r ${rec.r} | |Δ|>500cp 占 ${rec.bigPct}%`);
+    }
+  }
+  if (!asJson) console.log('解读：MAE 越小越贴近教师；r 越接近 1 说明排序越对。对比基线用同样本同 n 跑一遍。');
+}
+
+if (asJson) console.log(JSON.stringify({ table, mae: maeReport }));
 
 

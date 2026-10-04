@@ -7,6 +7,10 @@
  *
  * 输出格式（每行）：fen ; score_cp   （score 已转为红方视角）
  * 支持断点续传：重启后自动跳过已标注的局面。
+ *
+ * 失败的局面（引擎崩溃/非法 FEN/内存压力下 spawn 失败）会写到 <out>.failed.txt，
+ * 带原因。重跑本脚本时会自动重试它们（因为不在 <out> 的 done 集合里）。
+ * ⚠️ 失败原因以前只累加计数、不落盘，导致 2000 条静默丢失且无从诊断 —— 别再去掉这行。
  */
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 
@@ -17,6 +21,7 @@ const get = (k, d) => {
 };
 const IN = get('in', 'data/positions.txt');
 const OUT = get('out', 'data/labeled.txt');
+const FAILED = `${OUT}.failed.txt`;
 const BATCH = Number(get('batch', '32'));
 const DEPTH = Number(get('depth', '14'));
 const BRIDGE = get('bridge', 'http://127.0.0.1:8788');
@@ -75,7 +80,11 @@ for (let i = 0; i < todo.length; i += BATCH) {
   }
 
   for (const r of results) {
-    if (r.error) { fail++; continue; }
+    if (r.error) {
+      fail++;
+      appendFileSync(FAILED, `${r.fen}\t${r.error}\n`);
+      continue;
+    }
     const red = toRedView(r.fen, r.scoreCp, r.mate);
     appendFileSync(OUT, `${r.fen} ; ${red}\n`);
     ok++;
@@ -93,4 +102,7 @@ for (let i = 0; i < todo.length; i += BATCH) {
 }
 
 console.log(`[label] 完成：成功 ${ok}，失败 ${fail} → ${OUT}`);
+if (fail > 0) {
+  console.log(`[label] ⚠ ${fail} 条失败已记入 ${FAILED}（重跑本脚本会自动重试这些局面）`);
+}
 console.log(`[label] 下一步：python tools/distill/train.py --data ${OUT}`);
