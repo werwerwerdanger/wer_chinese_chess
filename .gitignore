@@ -19,6 +19,8 @@ data/*
 !data/model.pt
 !data/model-best.onnx
 !data/model-best.pt
+!data/model-big.onnx
+!data/model-big.pt
 # 迭代蒸馏实验日志（小文本，报告素材）
 !data/evolve-log.txt
 
