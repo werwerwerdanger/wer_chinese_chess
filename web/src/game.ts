@@ -66,7 +66,15 @@ export class GameController {
   /** 人机模式：AI 执黑（本地引擎 / Pikafish / NNUE 蒸馏模型） */
   private aiEnabled(): boolean {
     const v = this.mode.select.value;
-    return v === 'pve' || v === 'pikafish' || v === 'nnue';
+    return v === 'pve' || v === 'pikafish' || v === 'nnue' || v === 'aivsai';
+  }
+
+  /** 该方是否由 AI 落子：人机模式 AI 执黑；AI 对下双方都是 AI */
+  private aiPlaysSide(turn: 0 | 1): boolean {
+    const v = this.mode.select.value;
+    if (v === 'pvp') return false;
+    if (v === 'aivsai') return true;
+    return turn === 1;
   }
 
   private aiThinking = false;
@@ -88,12 +96,14 @@ export class GameController {
 
   /** 轮到 AI 且局面未结束 → 异步思考并落子 */
   private maybeAiMove(): void {
-    if (!this.aiEnabled() || this.aiThinking) return;
+    if (this.aiThinking) return;
     if (this.engine.gameOver()) return;
     const pos = this.engine.getPosition();
-    if (pos.turn !== 1) return; // AI 只执黑
+    if (!this.aiPlaysSide(pos.turn)) return; // 该方不由 AI 落子
+    if (this.drawCheck()) return;            // 重复局面/步数上限判和，避免两个 AI 无限循环
     this.aiThinking = true;
-    this.setStatus('🤔 AI 思考中…');
+    const side = pos.turn === 0 ? '红' : '黑';
+    this.setStatus(`🤔 ${side}方 AI 思考中…`);
     // setTimeout 让状态栏先渲染；think 为异步（本地搜索 / UCI 桥接均适用）
     const beforeLen = this.records.length;
     const beforeView = this.viewIndex;
@@ -107,14 +117,31 @@ export class GameController {
         }
         this.tryMove({ from: t.move.from, to: t.move.to });
         const v = this.mode.select.value;
-        const src = v === 'pikafish' ? 'Pikafish' : v === 'nnue' ? '蒸馏模型' : 'AI';
-        this.setStatus(`🤖 ${src}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${t.score}｜红方视角）`);
+        const who = v === 'aivsai' ? `${side}方` : v === 'pikafish' ? 'Pikafish' : v === 'nnue' ? '蒸馏模型' : 'AI';
+        this.setStatus(`🤖 ${who}（深度${t.depth}，${t.nodes}节点，${t.timeMs}ms，评分${t.score > 0 ? '+' : ''}${Math.round(t.score)}｜红方视角）`);
       } catch (err) {
         this.setStatus(`❌ AI 出错：${(err as Error).message}`);
       } finally {
         this.aiThinking = false;
+        this.maybeAiMove(); // AI 对下：连续走，直到终局 / 判和
       }
     }, 50);
+  }
+
+  /** AI 对下兜底：重复局面（同一 FEN 出现 3 次）或步数超限 → 判和，终止循环 */
+  private drawCheck(): boolean {
+    if (this.records.length >= 200) {
+      this.setStatus('🤝 步数上限（200），判和');
+      return true;
+    }
+    const fen = this.engine.getFen();
+    let cnt = 0;
+    for (const r of this.records) if (r.fenAfter === fen) cnt++;
+    if (cnt >= 2) {
+      this.setStatus('🤝 和棋（重复局面）');
+      return true;
+    }
+    return false;
   }
 
   private bindEvents(): void {
@@ -169,8 +196,8 @@ export class GameController {
   private onClick(e: MouseEvent): void {
     if (this.engine.gameOver()) return;
     if (this.aiThinking) return; // AI 思考中锁操作
-    // 人机模式：AI 执黑，黑方回合玩家不可操作
-    if (this.aiEnabled() && this.engine.getPosition().turn === 1) return;
+    // 该方由 AI 落子 → 玩家不可操作（AI 对下时双方都锁）
+    if (this.aiPlaysSide(this.engine.getPosition().turn)) return;
     // 处于回放态 → 先跳回最新
     if (this.viewIndex < this.records.length) {
       this.seek(this.records.length);
