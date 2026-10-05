@@ -59,21 +59,37 @@ function toRedView(fen, scoreCp, mate) {
 let ok = 0;
 let fail = 0;
 const t0 = Date.now();
+const FETCH_TIMEOUT = Number(get('timeout', '90000'));
 
-for (let i = 0; i < todo.length; i += BATCH) {
-  const batch = todo.slice(i, i + BATCH);
-  let results;
+/** 带超时的批量请求。桥接引擎池一旦楔死（引擎卡在崩溃-重启循环），
+ *  /eval-batch 会永远不返回，fetch 又没有默认超时 → 进程 hang 死、连重试都走不到。
+ *  （2026-10-05 就因此空转 4 小时无人察觉）所以这里必须加 AbortController 超时。 */
+async function fetchBatch(batch) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
   try {
     const resp = await fetch(`${BRIDGE}/eval-batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fens: batch, depth: DEPTH }),
+      signal: ctrl.signal,
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
-    results = data.results;
+    return data.results;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+for (let i = 0; i < todo.length; i += BATCH) {
+  const batch = todo.slice(i, i + BATCH);
+  let results;
+  try {
+    results = await fetchBatch(batch);
   } catch (err) {
-    console.error(`[label] 桥接出错（${err.message}），5 秒后重试本批…`);
+    const why = err.name === 'AbortError' ? `批量超时(>${FETCH_TIMEOUT / 1000}s，桥接可能楔死)` : err.message;
+    console.error(`[label] 桥接出错（${why}），5 秒后重试本批…`);
     await new Promise((r) => setTimeout(r, 5000));
     i -= BATCH; // 重试同一批
     continue;
