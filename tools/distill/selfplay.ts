@@ -150,6 +150,21 @@ function studentMove(b: Board) {
   return r.bestMove ?? null;
 }
 
+/** 等桥接恢复：每 5 秒 ping 一次，最多等 maxWaitMs。返回是否恢复。 */
+async function waitBridgeReady(maxWaitMs = 10 * 60 * 1000): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxWaitMs) {
+    try {
+      const r = await fetch(`${BRIDGE}/ping`);
+      if (r.ok) return true;
+    } catch {
+      /* 还没恢复，继续等 */
+    }
+    await new Promise((res) => setTimeout(res, 5000));
+  }
+  return false;
+}
+
 async function worker(w: number): Promise<void> {
   for (let g = w; g < GAMES; g += PARALLEL) {
     let failed = false;
@@ -158,18 +173,32 @@ async function worker(w: number): Promise<void> {
         await playOneGame(g);
         break;
       } catch (err) {
+        const msg = (err as Error).message;
+        // 「fetch failed」= 桥接 HTTP 连接断了（引擎抽风/桥重启），不是局面问题。
+        // 别急着判失败：等桥恢复后重头重试这局，让通宵任务扛住这种抖动。
+        if (msg === 'fetch failed') {
+          console.error(`[selfplay] 局 ${g + 1} 桥接连接中断，等桥恢复…`);
+          if (await waitBridgeReady()) {
+            attempt = -1; // 桥恢复了，重头重试这局（continue 后 attempt++ → 0）
+            continue;
+          }
+          console.error(`[selfplay] 局 ${g + 1} 桥 10 分钟未恢复，放弃`);
+          aborted++;
+          failed = true;
+          break;
+        }
         if (attempt === 2) {
           aborted++;
           failed = true;
-          console.error(`[selfplay] 局 ${g + 1} 三次失败放弃: ${(err as Error).message}`);
+          console.error(`[selfplay] 局 ${g + 1} 三次失败放弃: ${msg}`);
         } else {
           await new Promise((res) => setTimeout(res, 3000));
         }
       }
     }
-    // 连续失败 = 桥多半挂了，立刻停，别把整批空转完
+    // 连续失败 = 桥/引擎真有病。阈值放宽到 30，给足抖动容忍，仍能触发熔断防死循环。
     consecutiveFails = failed ? consecutiveFails + 1 : 0;
-    if (consecutiveFails >= 5) {
+    if (consecutiveFails >= 30) {
       flush();
       console.error(`[selfplay] ✖ 连续 ${consecutiveFails} 局失败，判定桥接已断，退出（已产出标签 ${labels} 条）`);
       console.error('[selfplay] 检查 bridge 窗口是否还在，重启后重跑即可');

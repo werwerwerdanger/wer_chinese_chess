@@ -1398,6 +1398,18 @@ function studentMove(b) {
   const r = s.search(2, 2e3);
   return r.bestMove ?? null;
 }
+async function waitBridgeReady(maxWaitMs = 10 * 60 * 1e3) {
+  const t02 = Date.now();
+  while (Date.now() - t02 < maxWaitMs) {
+    try {
+      const r = await fetch(`${BRIDGE}/ping`);
+      if (r.ok) return true;
+    } catch {
+    }
+    await new Promise((res) => setTimeout(res, 5e3));
+  }
+  return false;
+}
 async function worker(w) {
   for (let g = w; g < GAMES; g += PARALLEL) {
     let failed = false;
@@ -1406,17 +1418,29 @@ async function worker(w) {
         await playOneGame(g);
         break;
       } catch (err) {
+        const msg = err.message;
+        if (msg === "fetch failed") {
+          console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u7B49\u6865\u6062\u590D\u2026`);
+          if (await waitBridgeReady()) {
+            attempt = -1;
+            continue;
+          }
+          console.error(`[selfplay] \u5C40 ${g + 1} \u6865 10 \u5206\u949F\u672A\u6062\u590D\uFF0C\u653E\u5F03`);
+          aborted++;
+          failed = true;
+          break;
+        }
         if (attempt === 2) {
           aborted++;
           failed = true;
-          console.error(`[selfplay] \u5C40 ${g + 1} \u4E09\u6B21\u5931\u8D25\u653E\u5F03: ${err.message}`);
+          console.error(`[selfplay] \u5C40 ${g + 1} \u4E09\u6B21\u5931\u8D25\u653E\u5F03: ${msg}`);
         } else {
           await new Promise((res) => setTimeout(res, 3e3));
         }
       }
     }
     consecutiveFails = failed ? consecutiveFails + 1 : 0;
-    if (consecutiveFails >= 5) {
+    if (consecutiveFails >= 30) {
       flush();
       console.error(`[selfplay] \u2716 \u8FDE\u7EED ${consecutiveFails} \u5C40\u5931\u8D25\uFF0C\u5224\u5B9A\u6865\u63A5\u5DF2\u65AD\uFF0C\u9000\u51FA\uFF08\u5DF2\u4EA7\u51FA\u6807\u7B7E ${labels} \u6761\uFF09`);
       console.error("[selfplay] \u68C0\u67E5 bridge \u7A97\u53E3\u662F\u5426\u8FD8\u5728\uFF0C\u91CD\u542F\u540E\u91CD\u8DD1\u5373\u53EF");
