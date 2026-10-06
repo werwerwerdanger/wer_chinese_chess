@@ -1413,19 +1413,28 @@ async function waitBridgeReady(maxWaitMs = 10 * 60 * 1e3) {
 async function worker(w) {
   for (let g = w; g < GAMES; g += PARALLEL) {
     let failed = false;
+    let bridgeStrikes = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await playOneGame(g);
         break;
       } catch (err) {
         const msg = err.message;
+        const code = err.cause?.code ?? "\u65E0cause";
         if (msg === "fetch failed") {
-          console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u7B49\u6865\u6062\u590D\u2026`);
-          if (await waitBridgeReady()) {
+          bridgeStrikes++;
+          if (bridgeStrikes >= 5) {
+            console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u7EED ${bridgeStrikes} \u6B21\u4E2D\u65AD\uFF08${code}\uFF09\uFF0C\u653E\u5F03\u672C\u5C40`);
+            aborted++;
+            failed = true;
+            break;
+          }
+          console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD\uFF08${code}\uFF09\u7B2C ${bridgeStrikes} \u6B21\uFF0C\u7B49\u6865\u6062\u590D\u2026`);
+          if (await waitBridgeReady(30 * 1e3)) {
             attempt = -1;
             continue;
           }
-          console.error(`[selfplay] \u5C40 ${g + 1} \u6865 10 \u5206\u949F\u672A\u6062\u590D\uFF0C\u653E\u5F03`);
+          console.error(`[selfplay] \u5C40 ${g + 1} \u6865 30 \u79D2\u672A\u6062\u590D\uFF0C\u653E\u5F03`);
           aborted++;
           failed = true;
           break;
