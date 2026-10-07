@@ -202,7 +202,7 @@ function submitEval(fen, depth) {
   return p;
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -256,4 +256,10 @@ http.createServer(async (req, res) => {
 
   res.writeHead(404);
   res.end();
-}).listen(PORT, '127.0.0.1', () => console.log(`[bridge] listening on http://127.0.0.1:${PORT}`));
+});
+// 修 ECONNRESET（undici keep-alive 竞态，见 nodejs/undici#3141）：
+// 服务端默认 keepAliveTimeout=5000ms，客户端 undici 的定时器有 ~1s 延迟，
+// 客户端会复用「服务端刚关掉」的连接 → read ECONNRESET。
+// 解法：服务端不主动关 keep-alive 连接（设 0），交给客户端自己管理。
+server.keepAliveTimeout = 0;
+server.listen(PORT, '127.0.0.1', () => console.log(`[bridge] listening on http://127.0.0.1:${PORT}`));
