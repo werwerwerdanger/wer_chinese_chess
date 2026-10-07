@@ -21,6 +21,16 @@ const CWD = path.join(__dirname, 'dist');
 const PORT = 8788;
 const WORKERS = Math.max(1, Math.min(Number(process.env.PIKAFISH_WORKERS ?? 12), os.cpus().length));
 
+// 兜底：任何未捕获异常/拒绝都别让进程崩 —— 否则 HTTP 连接被 RST，客户端报 ECONNRESET。
+// 记录错误、保持进程存活，让引擎池继续服务。错误会打到桥接窗口，便于排查真凶。
+process.on('uncaughtException', (err) => {
+  console.error('[bridge] uncaughtException:', err && err.message ? err.message : err);
+  if (err && err.stack) console.error(err.stack.split('\n').slice(0, 4).join('\n'));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[bridge] unhandledRejection:', reason && reason.message ? reason.message : reason);
+});
+
 /** 单个 UCI 引擎进程：串行处理分配给它的请求；崩溃自动重启 */
 class UciEngine {
   constructor(id) {
