@@ -1395,7 +1395,7 @@ async function playOneGame(g) {
 }
 function studentMove(b) {
   const s = new Searcher(b, 1 << 17, (bb) => nn.evalBoard(bb));
-  const r = s.search(2, 500);
+  const r = s.search(1, 200);
   return r.bestMove ?? null;
 }
 async function waitBridgeReady(maxWaitMs = 10 * 60 * 1e3) {

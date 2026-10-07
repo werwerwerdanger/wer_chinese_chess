@@ -146,9 +146,9 @@ async function playOneGame(g: number): Promise<void> {
 /** 学生（NNUE+本地搜索）走一步；注意同步搜索会阻塞本进程其他协程 */
 function studentMove(b: Board) {
   const s = new Searcher(b, 1 << 17, (bb) => nn!.evalBoard(bb));
-  // 时间上限 500ms（原来 2000ms）：实测 search(2,2000) 每步 933ms 是因为 aspiration
-  // window 反复重搜、空耗时间；search(2,500) 只要 20ms、深算意义又不大 → 45× 提速。
-  const r = s.search(2, 500);
+  // 深度 1 + 200ms：实测冷启动 search(2,500) 每步吃满 500ms（quiescence 爆评估），
+  // search(1,200) 只要 30ms。学生是弱陪练，深算意义不大，随机开局已保证局面多样性。
+  const r = s.search(1, 200);
   return r.bestMove ?? null;
 }
 
