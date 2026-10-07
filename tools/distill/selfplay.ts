@@ -189,7 +189,10 @@ async function worker(w: number): Promise<void> {
             failed = true;
             break;
           }
-          console.error(`[selfplay] 局 ${g + 1} 桥接连接中断（${code} ${causeMsg}）第 ${bridgeStrikes} 次，等桥恢复…`);
+          // 只在第一次中断时打一行，后续静默重试，避免刷屏
+          if (bridgeStrikes === 1) {
+            console.error(`[selfplay] 局 ${g + 1} 桥接连接中断（${code}），自动重试…`);
+          }
           if (await waitBridgeReady(30 * 1000)) {
             attempt = -1; // 桥恢复了，重头重试这局
             continue;

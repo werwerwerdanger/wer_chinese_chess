@@ -1431,7 +1431,9 @@ async function worker(w) {
             failed = true;
             break;
           }
-          console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD\uFF08${code} ${causeMsg}\uFF09\u7B2C ${bridgeStrikes} \u6B21\uFF0C\u7B49\u6865\u6062\u590D\u2026`);
+          if (bridgeStrikes === 1) {
+            console.error(`[selfplay] \u5C40 ${g + 1} \u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD\uFF08${code}\uFF09\uFF0C\u81EA\u52A8\u91CD\u8BD5\u2026`);
+          }
           if (await waitBridgeReady(30 * 1e3)) {
             attempt = -1;
             continue;
