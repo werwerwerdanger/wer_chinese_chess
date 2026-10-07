@@ -146,7 +146,9 @@ async function playOneGame(g: number): Promise<void> {
 /** 学生（NNUE+本地搜索）走一步；注意同步搜索会阻塞本进程其他协程 */
 function studentMove(b: Board) {
   const s = new Searcher(b, 1 << 17, (bb) => nn!.evalBoard(bb));
-  const r = s.search(2, 2000); // 学生陪练用浅搜：快，且它的深算意义不大
+  // 时间上限 500ms（原来 2000ms）：实测 search(2,2000) 每步 933ms 是因为 aspiration
+  // window 反复重搜、空耗时间；search(2,500) 只要 20ms、深算意义又不大 → 45× 提速。
+  const r = s.search(2, 500);
   return r.bestMove ?? null;
 }
 
@@ -175,17 +177,19 @@ async function worker(w: number): Promise<void> {
         break;
       } catch (err) {
         const msg = (err as Error).message;
-        const code = (err as { cause?: { code?: string } }).cause?.code ?? '无cause';
+        const cause = (err as { cause?: Error }).cause as (Error & { code?: string }) | undefined;
+        const code = cause?.code ?? '无cause';
+        const causeMsg = cause?.message ?? '';
         // 「fetch failed」= 桥接 HTTP 连接断了。打印真实错误码，并给重试次数封顶，防止无限循环。
         if (msg === 'fetch failed') {
           bridgeStrikes++;
           if (bridgeStrikes >= 5) {
-            console.error(`[selfplay] 局 ${g + 1} 桥接连续 ${bridgeStrikes} 次中断（${code}），放弃本局`);
+            console.error(`[selfplay] 局 ${g + 1} 桥接连续 ${bridgeStrikes} 次中断（${code} ${causeMsg}），放弃本局`);
             aborted++;
             failed = true;
             break;
           }
-          console.error(`[selfplay] 局 ${g + 1} 桥接连接中断（${code}）第 ${bridgeStrikes} 次，等桥恢复…`);
+          console.error(`[selfplay] 局 ${g + 1} 桥接连接中断（${code} ${causeMsg}）第 ${bridgeStrikes} 次，等桥恢复…`);
           if (await waitBridgeReady(30 * 1000)) {
             attempt = -1; // 桥恢复了，重头重试这局
             continue;
