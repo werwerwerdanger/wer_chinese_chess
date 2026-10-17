@@ -30,6 +30,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..\..")
+# .NET APIs ([IO.File]::ReadAllText etc.) resolve relative paths against
+# Environment.CurrentDirectory, which Set-Location does NOT update. Without
+# this line, relative paths silently break when the console was started
+# somewhere else (e.g. the user home directory).
+[Environment]::CurrentDirectory = (Get-Location).ProviderPath
 Write-Host "[match-big] repo root: $(Get-Location)"
 
 if (-not $DryRun) {

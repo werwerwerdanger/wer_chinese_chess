@@ -32,6 +32,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..\..")
+# Same fix as match-big.ps1: keep .NET relative-path APIs working.
+[Environment]::CurrentDirectory = (Get-Location).ProviderPath
 Write-Host "[train-match] repo root: $(Get-Location)"
 
 function Expand-Gz([string]$Src, [string]$Dst) {
